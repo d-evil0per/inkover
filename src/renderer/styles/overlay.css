@@ -1,0 +1,87 @@
+/* Overlay window — transparent, full-bleed canvas. */
+:root {
+  color-scheme: dark light;
+}
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  /* When the overlay is "click-through" the main process toggles
+     setIgnoreMouseEvents; CSS pointer-events:none is a belt-and-suspenders
+     fallback. */
+}
+
+#inkover-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  /* Stack ABOVE blur regions so drawn shapes are not themselves blurred.
+     Tool layers (laser/spotlight/magnifier/text editor) sit higher still. */
+  z-index: 10;
+  /* Critical: cursor changes when tools change, set imperatively in JS. */
+}
+
+/* Blur regions live below the canvas so backdrop-filter only blurs the
+   transparent area showing the desktop, not the strokes the user has drawn. */
+.inkover-blur-region,
+.inkover-blur-preview {
+  z-index: 1 !important;
+  position: fixed;
+  left: 0;
+  top: 0;
+  /* Ensure the backdrop-filter applies to the underlying desktop pixels */
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* When hidden by IPC, fade out so toggling feels less abrupt. */
+body[data-visible="false"] {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+body[data-visible="true"] {
+  opacity: 1;
+  transition: opacity 120ms ease;
+}
+
+/* Annotation-mode badge so the user can tell the overlay is active.
+   It sits in the top-right corner and never blocks pointer events. */
+body[data-visible="true"]::before {
+  content: "● Annotating  •  Esc to hide";
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  padding: 6px 12px;
+  background: rgba(28, 28, 30, 0.78);
+  color: #fff;
+  font: 12px/1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  border-radius: 999px;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+  z-index: 100;
+}
+
+/* Subtle accent border so the user can see the annotation surface even when
+   no shapes have been drawn yet. */
+body[data-visible="true"]::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  border: 2px solid rgba(0, 122, 255, 0.35);
+  pointer-events: none;
+  box-sizing: border-box;
+  z-index: 99;
+}
+
+/* The text-tool spawns a free-floating textarea; style it to match the system. */
+.inkover-text-editor {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  caret-color: currentColor;
+}

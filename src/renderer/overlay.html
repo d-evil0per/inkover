@@ -1,0 +1,16 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>InkOver Overlay</title>
+    <link rel="stylesheet" href="./styles/overlay.css" />
+  </head>
+  <body data-visible="true">
+    <!--
+      The canvas fills the entire window. CSS keeps the body transparent;
+      the BrowserWindow itself is created with transparent: true in main.
+    -->
+    <canvas id="inkover-canvas"></canvas>
+    <script type="module" src="./overlay-app.ts"></script>
+  </body>
+</html>

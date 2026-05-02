@@ -1,0 +1,640 @@
+/* InkOver toolbar — frameless transparent BrowserWindow.
+   Window is 220×640. The pill is anchored left so flyouts/tooltips can slide
+   out into the rest of the (otherwise transparent) window content area. */
+
+:root {
+  color-scheme: dark;
+  --bg: rgba(26, 26, 28, 0.82);
+  --bg-elev: rgba(72, 72, 76, 0.55);
+  --bg-tooltip: rgba(20, 20, 22, 0.96);
+  --border: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.12);
+  --fg: #fff;
+  --fg-dim: rgba(255, 255, 255, 0.55);
+  --fg-mute: rgba(255, 255, 255, 0.32);
+  --accent: #0a84ff;
+  --accent-glow: rgba(10, 132, 255, 0.45);
+  --danger: #ff453a;
+  /* No outer drop-shadow on dock surfaces — definition comes from a thin
+     border instead. Tooltips/modals still get a soft shadow because they
+     are transient popups that need to read as floating UI. */
+  --pill-border: 1px solid var(--border-strong);
+  --tooltip-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+  --easing: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  /* Keep the document itself from showing a native scrollbar; the pill will
+     become scrollable instead when it grows taller than the window. */
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+               Roboto, sans-serif;
+  font-size: 13px;
+  color: var(--fg);
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.tb-root {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding-left: 8px;
+  position: relative;
+  /* Allow popovers/flyouts to be visible outside the pill without creating
+     a scrollbar on the window itself. */
+  overflow: visible;
+}
+
+/* ---- Pill ------------------------------------------------------------- */
+
+.tb-pill {
+  background: var(--bg);
+  border: var(--pill-border);
+  border-radius: 16px;
+  backdrop-filter: blur(28px) saturate(1.6);
+  -webkit-backdrop-filter: blur(28px) saturate(1.6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* Make the pill scrollable if it becomes taller than the viewport, but
+     hide native scrollbars for a cleaner, tool-like appearance. */
+  overflow: auto;
+  max-height: 92vh;
+  transition: width 280ms var(--easing),
+              padding 280ms var(--easing),
+              border-radius 280ms var(--easing);
+  background-image: linear-gradient(180deg,
+                    rgba(255, 255, 255, 0.04) 0%,
+                    rgba(255, 255, 255, 0) 30%,
+                    rgba(0, 0, 0, 0.06) 100%);
+}
+
+/* Hide native scrollbars on the pill while preserving scrollability */
+.tb-pill::-webkit-scrollbar { width: 0; height: 0; }
+.tb-pill { -ms-overflow-style: none; /* IE/Edge */ scrollbar-width: none; /* Firefox */ }
+.tb-pill { -webkit-overflow-scrolling: touch; }
+
+.tb-pill--expanded {
+  width: 48px;
+  padding: 4px 0 6px;
+  gap: 0;
+}
+
+/* When collapsed, the .tb-pill class is intentionally NOT applied — we render
+   a single circular button instead (.tb-collapsed below) so there's no nested
+   "shape inside a shape" appearance. */
+
+/* ---- Header (drag handle) -------------------------------------------- */
+
+.tb-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  -webkit-app-region: drag;
+  cursor: grab;
+}
+.tb-header:active { cursor: grabbing; }
+
+.tb-logo {
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+}
+
+/* ---- Sections + dividers --------------------------------------------- */
+
+.tb-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  gap: 2px;
+  padding: 2px 0;
+}
+.tb-section--bottom { gap: 1px; }
+
+.tb-divider {
+  width: 56%;
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+/* ---- Buttons ---------------------------------------------------------- */
+
+.tb-btn {
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  position: relative;
+  transition: background 140ms var(--easing),
+              transform 100ms var(--easing),
+              color 120ms var(--easing);
+  -webkit-app-region: no-drag;
+}
+.tb-btn:hover {
+  background: var(--bg-elev);
+  color: #fff;
+}
+.tb-btn:active { transform: scale(0.92); }
+.tb-btn.is-active {
+  background: var(--accent);
+  color: #fff;
+}
+.tb-btn.is-active::before {
+  content: "";
+  position: absolute;
+  left: -5px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+/* ---- Group buttons + flyouts ---------------------------------------- */
+
+.tb-group-wrap {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  /* Permit flyouts to render outside the group without being clipped */
+  overflow: visible;
+}
+
+.tb-btn--group {
+  position: relative;
+}
+.tb-group-chevron {
+  position: absolute;
+  bottom: 1px;
+  right: 1px;
+  width: 11px;
+  height: 11px;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  color: var(--fg-mute);
+  background: rgba(0, 0, 0, 0.25);
+  transition: color 120ms var(--easing), background 120ms var(--easing),
+              transform 200ms var(--easing);
+}
+.tb-btn--group:hover .tb-group-chevron {
+  color: var(--fg);
+  background: rgba(0, 0, 0, 0.4);
+}
+.tb-btn--group.is-open .tb-group-chevron {
+  transform: rotate(90deg);
+  color: var(--accent);
+}
+
+.tb-flyout {
+  position: absolute;
+  left: calc(100% + 12px);
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  /* Default to a compact horizontal popover */
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: var(--bg);
+  border: none;
+  border-radius: 12px;
+  backdrop-filter: blur(28px) saturate(1.6);
+  -webkit-backdrop-filter: blur(28px) saturate(1.6);
+  /* Ensure flyouts sit above the pill and other UI */
+  z-index: 1200;
+  /* Constrain size so it never dominates the window */
+  max-width: 420px;
+  max-height: 70vh;
+  overflow: auto;
+  -ms-overflow-style: none; /* IE/Edge */
+  scrollbar-width: none; /* Firefox */
+  box-shadow: 0 12px 40px rgba(0,0,0,0.45), 0 2px 6px rgba(0,0,0,0.25);
+  animation: tb-flyout-in 180ms var(--easing);
+}
+.tb-flyout::-webkit-scrollbar { width: 0; height: 0; }
+@keyframes tb-flyout-in {
+  from { opacity: 0; transform: translate(-8px, -50%) scale(0.98); }
+  to   { opacity: 1; transform: translate(0,    -50%) scale(1); }
+}
+.tb-flyout-arrow {
+  position: absolute;
+  left: -5px;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  background: var(--bg);
+  /* subtle rim and shadow so the arrow reads as part of the popover */
+  border: 1px solid rgba(255,255,255,0.04);
+  box-shadow: 0 6px 12px rgba(0,0,0,0.25);
+  transform: translateY(-50%) rotate(45deg);
+}
+.tb-flyout-btn {
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: background 120ms var(--easing), transform 80ms var(--easing);
+  -webkit-app-region: no-drag;
+}
+.tb-flyout-btn:hover { background: var(--bg-elev); }
+.tb-flyout-btn:active { transform: scale(0.92); }
+.tb-flyout-btn.is-active {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* ---- Style button + flyout ------------------------------------------ */
+
+.tb-btn--style { padding: 0; }
+
+.tb-style-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--swatch);
+  display: grid;
+  place-items: center;
+  border: 1.5px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+.tb-btn--style.is-active .tb-style-swatch {
+  border-color: #fff;
+}
+
+.tb-style-dot {
+  display: block;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+}
+
+.tb-flyout--style {
+  display: grid;
+  grid-template-rows: auto auto;
+  gap: 10px;
+  padding: 10px;
+  width: 220px;
+}
+.tb-style-row {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+.tb-style-row--bottom {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  gap: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.tb-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--swatch);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+  padding: 0;
+  transition: transform 120ms var(--easing), box-shadow 120ms var(--easing);
+}
+.tb-swatch:hover { transform: scale(1.18); }
+.tb-swatch.is-active {
+  box-shadow: 0 0 0 3px rgba(10,132,255,0.2), inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+}
+
+.tb-color-input {
+  width: 22px; height: 22px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.tb-color-input::-webkit-color-swatch-wrapper { padding: 0; }
+.tb-color-input::-webkit-color-swatch { border-radius: 999px; border: none; }
+
+.tb-range {
+  flex: 1;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  margin: 0;
+  height: 12px;
+}
+.tb-range::-webkit-slider-runnable-track {
+  height: 3px;
+  background: var(--border-strong);
+  border-radius: 999px;
+}
+.tb-range::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 12px; height: 12px;
+  margin-top: -4.5px;
+  border-radius: 50%;
+  background: var(--fg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+.tb-range-num {
+  font-size: 10px;
+  color: var(--fg-dim);
+  font-variant-numeric: tabular-nums;
+  min-width: 14px;
+  text-align: right;
+}
+
+/* ---- Record button + flyout ----------------------------------------- */
+
+.tb-btn--rec { color: var(--danger); }
+.tb-btn--rec.is-recording {
+  animation: tb-pulse 1.2s ease-in-out infinite;
+  background: rgba(255, 69, 58, 0.16);
+}
+@keyframes tb-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+.tb-flyout--record {
+  flex-direction: column;
+  align-items: stretch;
+  padding: 8px;
+  gap: 8px;
+  /* slightly wider record flyout */
+  min-width: 200px;
+}
+.tb-rec-formats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.22);
+  border-radius: 8px;
+  padding: 3px;
+}
+.tb-pill-btn {
+  border: none;
+  background: transparent;
+  color: var(--fg-dim);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  letter-spacing: 0.02em;
+  transition: background 140ms var(--easing), color 140ms var(--easing);
+}
+.tb-pill-btn:hover { color: var(--fg); }
+.tb-pill-btn.is-active {
+  background: var(--bg-elev);
+  color: #fff;
+}
+
+.tb-rec-start {
+  border: none;
+  background: var(--danger);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 7px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: background 140ms var(--easing), transform 80ms var(--easing);
+}
+.tb-rec-start:hover { background: #ff5e54; }
+.tb-rec-start:active { transform: scale(0.97); }
+.tb-rec-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.6);
+}
+
+/* ---- Collapsed: single circular button ----------------------------- */
+
+.tb-collapsed {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: var(--pill-border);
+  padding: 0;
+  background: var(--bg);
+  color: var(--accent);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  backdrop-filter: blur(20px) saturate(1.6);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  transition: transform 140ms var(--easing),
+              background 180ms var(--easing);
+  -webkit-app-region: no-drag;
+}
+.tb-collapsed:hover {
+  transform: scale(1.05);
+  background: rgba(40, 40, 44, 0.9);
+}
+.tb-collapsed:active { transform: scale(0.95); }
+
+/* ---- Tooltips -------------------------------------------------------- */
+
+[data-tooltip] { position: relative; }
+[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: calc(100% + 14px);
+  top: 50%;
+  transform: translate(-4px, -50%);
+  background: var(--bg-tooltip);
+  color: var(--fg);
+  padding: 5px 9px;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  box-shadow: var(--tooltip-shadow);
+  /* remove thin border to avoid visible dark outline on some platforms */
+  border: none;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  transition: opacity 140ms var(--easing), transform 180ms var(--easing);
+  z-index: 200;
+  /* allow longer tooltip text without wrapping too early */
+  max-width: 260px;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+[data-tooltip]::before {
+  content: "";
+  position: absolute;
+  left: calc(100% + 9px);
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  background: var(--bg-tooltip);
+  /* no border on the arrow so the tooltip edge appears clean */
+  border: none;
+  transform: translate(-2px, -50%) rotate(45deg);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 140ms var(--easing) 60ms,
+              transform 180ms var(--easing) 60ms;
+  z-index: 199;
+}
+[data-tooltip]:hover::after,
+[data-tooltip]:focus-visible::after {
+  opacity: 1;
+  transform: translate(0, -50%);
+  transition-delay: 320ms;
+}
+[data-tooltip]:hover::before,
+[data-tooltip]:focus-visible::before {
+  opacity: 1;
+  transform: translate(0, -50%) rotate(45deg);
+  transition-delay: 380ms;
+}
+[data-tooltip-shortcut]:not([data-tooltip-shortcut=""])::after {
+  content: attr(data-tooltip) " · " attr(data-tooltip-shortcut);
+}
+
+/* Suppress parent tooltip when its flyout is open */
+.tb-btn--group.is-open[data-tooltip]::after,
+.tb-btn--group.is-open[data-tooltip]::before,
+.tb-btn--style.is-open[data-tooltip]::after,
+.tb-btn--style.is-open[data-tooltip]::before,
+.tb-btn--rec.is-open[data-tooltip]::after,
+.tb-btn--rec.is-open[data-tooltip]::before {
+  opacity: 0 !important;
+}
+
+/* Bottom-side tooltips for flyout items */
+.tb-flyout-btn[data-tooltip-side="bottom"]::after {
+  left: 50%;
+  top: calc(100% + 12px);
+  transform: translate(-50%, -4px);
+}
+.tb-flyout-btn[data-tooltip-side="bottom"]:hover::after {
+  transform: translate(-50%, 0);
+}
+.tb-flyout-btn[data-tooltip-side="bottom"]::before {
+  left: 50%;
+  top: calc(100% + 7px);
+  transform: translate(-50%, -2px) rotate(45deg);
+  border-left: none;
+  border-top: 1px solid var(--border-strong);
+}
+.tb-flyout-btn[data-tooltip-side="bottom"]:hover::before {
+  transform: translate(-50%, 0) rotate(45deg);
+}
+
+/* ---- Source picker modal -------------------------------------------- */
+
+.tb-modal {
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(8px);
+  display: grid; place-items: center;
+  z-index: 9999;
+  animation: tb-fade 180ms var(--easing);
+}
+@keyframes tb-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.tb-modal-card {
+  width: min(560px, 92vw);
+  max-height: 80vh;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow: auto;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+}
+.tb-modal-card h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.tb-source-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+.tb-source {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px;
+  cursor: pointer;
+  text-align: left;
+  color: var(--fg);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: background 140ms var(--easing), border-color 140ms var(--easing),
+              transform 100ms var(--easing);
+}
+.tb-source:hover {
+  background: rgba(10, 132, 255, 0.18);
+  border-color: var(--accent);
+}
+.tb-source:active { transform: scale(0.98); }
+.tb-source img {
+  width: 100%; border-radius: 6px; display: block;
+  aspect-ratio: 16/9; object-fit: cover;
+}
+.tb-source-name {
+  font-size: 11px;
+  color: var(--fg-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tb-modal-actions { text-align: right; margin-top: 6px; }
+.tb-modal-btn {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  color: var(--fg);
+  border-radius: 8px;
+  padding: 7px 14px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 140ms var(--easing);
+}
+.tb-modal-btn:hover { background: var(--bg-elev); }
