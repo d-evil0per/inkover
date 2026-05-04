@@ -60,18 +60,53 @@ jobs:
       - name: Run typecheck
         run: npm run typecheck
 
+      - name: Prepare electron-builder environment
+        shell: bash
+        env:
+          INPUT_CSC_LINK: ${{ secrets.CSC_LINK }}
+          INPUT_CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          INPUT_APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          INPUT_APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          INPUT_APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          INPUT_APPLE_ID: ${{ secrets.APPLE_ID }}
+          INPUT_APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          INPUT_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          echo "CSC_IDENTITY_AUTO_DISCOVERY=false" >> "$GITHUB_ENV"
+
+          append_env() {
+            local name="$1"
+            local value="$2"
+
+            if [ -z "$value" ]; then
+              return
+            fi
+
+            local marker="EOF_$(openssl rand -hex 8)"
+            {
+              echo "$name<<$marker"
+              echo "$value"
+              echo "$marker"
+            } >> "$GITHUB_ENV"
+          }
+
+          append_env CSC_LINK "$INPUT_CSC_LINK"
+          append_env CSC_KEY_PASSWORD "$INPUT_CSC_KEY_PASSWORD"
+          append_env APPLE_API_KEY "$INPUT_APPLE_API_KEY"
+          append_env APPLE_API_KEY_ID "$INPUT_APPLE_API_KEY_ID"
+          append_env APPLE_API_ISSUER "$INPUT_APPLE_API_ISSUER"
+          append_env APPLE_ID "$INPUT_APPLE_ID"
+          append_env APPLE_APP_SPECIFIC_PASSWORD "$INPUT_APPLE_APP_SPECIFIC_PASSWORD"
+          append_env APPLE_TEAM_ID "$INPUT_APPLE_TEAM_ID"
+
+          if [ -n "$INPUT_CSC_LINK" ]; then
+            echo "Using configured code-signing secrets."
+          else
+            echo "No code-signing certificate configured; building unsigned artifacts."
+          fi
+
       - name: Build platform distributables
         run: ${{ matrix.buildCommand }}
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
