@@ -203,16 +203,21 @@ Use `.github/workflows/release-builds.yml` for sellable cross-platform builds.
 - Pushing a tag such as `v0.1.0` builds those artifacts and attaches them to a GitHub Release automatically.
 - Tagged releases attach the platform packages directly to GitHub Releases: Windows `.exe` and `.zip`, macOS `.dmg` and `.zip`, Linux `.AppImage` and `.deb`.
 - The release workflow expects signing and notarization secrets only when you want fully trusted customer distribution:
-	- `CSC_LINK`
-	- `CSC_KEY_PASSWORD`
-	- `APPLE_API_KEY`
-	- `APPLE_API_KEY_ID`
-	- `APPLE_API_ISSUER`
-	- `APPLE_ID`
-	- `APPLE_APP_SPECIFIC_PASSWORD`
-	- `APPLE_TEAM_ID`
+	- Windows signing: `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD`
+	- macOS signing: `MAC_CSC_LINK`, `MAC_CSC_KEY_PASSWORD`
+	- macOS notarization: `APPLE_API_KEY`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`
 
 Without those secrets, the workflow still gives you unsigned test artifacts for each OS. With them, it becomes the right path for production distribution.
+
+To add those secrets in GitHub:
+
+- Open your repository on GitHub.
+- Go to `Settings` → `Secrets and variables` → `Actions`.
+- Click `New repository secret` for each value above.
+- For `WIN_CSC_LINK` and `MAC_CSC_LINK`, store the base64-encoded contents of your exported `.p12`/`.pfx` certificate file rather than a local file path.
+- For `WIN_CSC_KEY_PASSWORD` and `MAC_CSC_KEY_PASSWORD`, store the certificate export password.
+- For `APPLE_API_KEY`, store the full contents of the `.p8` App Store Connect API key file. The workflow writes it to a temporary file on the macOS runner and passes that file path to electron-builder.
+- For macOS notarization, configure one method at a time. Prefer the App Store Connect API key set (`APPLE_API_KEY`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER`). Only use the Apple ID set (`APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`) if you are not using the API-key flow.
 
 ## Permissions
 

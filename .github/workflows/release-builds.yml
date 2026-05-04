@@ -63,8 +63,10 @@ jobs:
       - name: Prepare electron-builder environment
         shell: bash
         env:
-          INPUT_CSC_LINK: ${{ secrets.CSC_LINK }}
-          INPUT_CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          INPUT_WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          INPUT_WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          INPUT_MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          INPUT_MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
           INPUT_APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           INPUT_APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           INPUT_APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
@@ -90,20 +92,52 @@ jobs:
             } >> "$GITHUB_ENV"
           }
 
-          append_env CSC_LINK "$INPUT_CSC_LINK"
-          append_env CSC_KEY_PASSWORD "$INPUT_CSC_KEY_PASSWORD"
-          append_env APPLE_API_KEY "$INPUT_APPLE_API_KEY"
-          append_env APPLE_API_KEY_ID "$INPUT_APPLE_API_KEY_ID"
-          append_env APPLE_API_ISSUER "$INPUT_APPLE_API_ISSUER"
-          append_env APPLE_ID "$INPUT_APPLE_ID"
-          append_env APPLE_APP_SPECIFIC_PASSWORD "$INPUT_APPLE_APP_SPECIFIC_PASSWORD"
-          append_env APPLE_TEAM_ID "$INPUT_APPLE_TEAM_ID"
+          case "$RUNNER_OS" in
+            Windows)
+              append_env CSC_LINK "$INPUT_WIN_CSC_LINK"
+              append_env CSC_KEY_PASSWORD "$INPUT_WIN_CSC_KEY_PASSWORD"
 
-          if [ -n "$INPUT_CSC_LINK" ]; then
-            echo "Using configured code-signing secrets."
-          else
-            echo "No code-signing certificate configured; building unsigned artifacts."
-          fi
+              if [ -n "$INPUT_WIN_CSC_LINK" ]; then
+                echo "Using configured Windows code-signing certificate."
+              else
+                echo "No Windows code-signing certificate configured; building unsigned Windows artifacts."
+              fi
+              ;;
+            macOS)
+              append_env CSC_LINK "$INPUT_MAC_CSC_LINK"
+              append_env CSC_KEY_PASSWORD "$INPUT_MAC_CSC_KEY_PASSWORD"
+
+              if [ -n "$INPUT_APPLE_API_KEY" ] && [ -n "$INPUT_APPLE_API_KEY_ID" ] && [ -n "$INPUT_APPLE_API_ISSUER" ]; then
+                apple_api_key_path="$RUNNER_TEMP/AuthKey_${INPUT_APPLE_API_KEY_ID:-InkOver}.p8"
+                printf '%s' "$INPUT_APPLE_API_KEY" > "$apple_api_key_path"
+                chmod 600 "$apple_api_key_path"
+                append_env APPLE_API_KEY "$apple_api_key_path"
+                append_env APPLE_API_KEY_ID "$INPUT_APPLE_API_KEY_ID"
+                append_env APPLE_API_ISSUER "$INPUT_APPLE_API_ISSUER"
+              else
+                append_env APPLE_ID "$INPUT_APPLE_ID"
+                append_env APPLE_APP_SPECIFIC_PASSWORD "$INPUT_APPLE_APP_SPECIFIC_PASSWORD"
+                append_env APPLE_TEAM_ID "$INPUT_APPLE_TEAM_ID"
+              fi
+
+              if [ -n "$INPUT_MAC_CSC_LINK" ]; then
+                echo "Using configured macOS code-signing certificate."
+              else
+                echo "No macOS code-signing certificate configured; building unsigned macOS artifacts."
+              fi
+
+              if [ -n "$INPUT_APPLE_API_KEY" ] && [ -n "$INPUT_APPLE_API_KEY_ID" ] && [ -n "$INPUT_APPLE_API_ISSUER" ]; then
+                echo "Apple notarization credentials detected via App Store Connect API key."
+              elif [ -n "$INPUT_APPLE_ID" ] || [ -n "$INPUT_APPLE_APP_SPECIFIC_PASSWORD" ] || [ -n "$INPUT_APPLE_TEAM_ID" ]; then
+                echo "Apple notarization credentials detected via Apple ID."
+              else
+                echo "No Apple notarization credentials configured; macOS artifacts will remain unsigned or unnotarized."
+              fi
+              ;;
+            *)
+              echo "No signing configuration required for $RUNNER_OS."
+              ;;
+          esac
 
       - name: Build platform distributables
         run: ${{ matrix.buildCommand }}
