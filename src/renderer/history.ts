@@ -29,15 +29,21 @@ export class History {
 
   undo(current: Shape[]): Shape[] | null {
     if (this.past.length === 0) return null;
+
+    // `past` stores the committed snapshots, including the current state at the
+    // top. Undo needs to discard that current snapshot and reveal the previous
+    // one; otherwise the first undo after a change is a no-op.
     this.future.push(clone(current));
-    const prev = this.past.pop()!;
-    return prev;
+    this.past.pop();
+    return this.past.length > 0 ? clone(this.past[this.past.length - 1]) : [];
   }
 
   redo(current: Shape[]): Shape[] | null {
     if (this.future.length === 0) return null;
-    this.past.push(clone(current));
-    return this.future.pop()!;
+
+    const next = this.future.pop()!;
+    this.past.push(clone(next));
+    return next;
   }
 
   canUndo(): boolean {
