@@ -36,7 +36,10 @@ module.exports = {
     legalTrademarks: "InkOver",
     requestedExecutionLevel: "asInvoker",
     signAndEditExecutable: !isWindowsLocalBuild,
-    target: [{ target: "nsis", arch: ["x64"] }]
+    target: [
+      { target: "nsis", arch: ["x64"] },
+      { target: "zip", arch: ["x64"] }
+    ]
   },
   nsis: {
     oneClick: false,

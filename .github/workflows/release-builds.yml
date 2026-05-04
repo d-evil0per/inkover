@@ -22,6 +22,7 @@ jobs:
             artifactName: inkover-windows
             artifactPath: |
               release/*.exe
+              release/*.zip
               release/*.blockmap
               release/latest*.yml
           - label: Linux

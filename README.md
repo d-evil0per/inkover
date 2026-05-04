@@ -201,6 +201,7 @@ Use `.github/workflows/release-builds.yml` for sellable cross-platform builds.
 
 - `workflow_dispatch` creates Windows, Linux, and macOS artifacts on native GitHub runners.
 - Pushing a tag such as `v0.1.0` builds those artifacts and attaches them to a GitHub Release automatically.
+- Tagged releases attach the platform packages directly to GitHub Releases: Windows `.exe` and `.zip`, macOS `.dmg` and `.zip`, Linux `.AppImage` and `.deb`.
 - The release workflow expects signing and notarization secrets only when you want fully trusted customer distribution:
 	- `CSC_LINK`
 	- `CSC_KEY_PASSWORD`
