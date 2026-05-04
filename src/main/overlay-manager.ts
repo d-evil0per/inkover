@@ -14,10 +14,9 @@
 //   - The renderer flips this on pointerdown of a drawing tool by calling
 //     window.inkover... actually no, it calls back via IPC; see ipc-handlers.
 
-import { BrowserWindow, screen, type Display } from "electron";
-import { join } from "path";
+import { BrowserWindow, screen, type Display, type Rectangle } from "electron";
 import { IPC } from "../shared/ipc-channels";
-import type { DisplayInfo } from "../shared/types";
+import type { DisplayInfo, Rect } from "../shared/types";
 
 interface OverlayWindow {
   display: Display;
@@ -27,6 +26,10 @@ interface OverlayWindow {
 export class OverlayManager {
   private overlays = new Map<number, OverlayWindow>();
   private visible = false;
+  private activeDisplayId: number | null = null;
+  private clickThrough = true;
+  private pointerOverToolbar = false;
+  private toolbarExclusionBounds: Rect | null = null;
   private rendererBaseUrl: string;
   private preloadPath: string;
 
@@ -45,32 +48,38 @@ export class OverlayManager {
     screen.on("display-metrics-changed", (_e, d) => this.repositionForDisplay(d));
   }
 
-  /** Show all overlays and put them in interactive (drawing) mode. */
-  show(): void {
+  /** Show the overlay for the selected display and hide the rest. */
+  show(displayId?: number | null): void {
+    if (displayId != null) this.activeDisplayId = displayId;
+    else if (this.activeDisplayId == null) this.activeDisplayId = screen.getPrimaryDisplay().id;
     this.visible = true;
-    for (const ov of this.overlays.values()) {
-      ov.window.showInactive();
-      ov.window.setIgnoreMouseEvents(false);
-      ov.window.webContents.send(IPC.OnVisibilityChange, { visible: true });
-    }
+    this.syncOverlayWindows();
   }
 
   /** Hide all overlays. */
   hide(): void {
     this.visible = false;
-    for (const ov of this.overlays.values()) {
-      ov.window.webContents.send(IPC.OnVisibilityChange, { visible: false });
-      ov.window.hide();
-    }
+    this.syncOverlayWindows();
   }
 
-  toggle(): void {
+  toggle(displayId?: number | null): void {
     if (this.visible) this.hide();
-    else this.show();
+    else this.show(displayId);
   }
 
   isVisible(): boolean {
     return this.visible;
+  }
+
+  setActiveDisplay(displayId: number | null): void {
+    if (displayId == null || this.activeDisplayId === displayId) return;
+    this.activeDisplayId = displayId;
+    if (this.visible) this.syncOverlayWindows();
+  }
+
+  setToolbarExclusionBounds(bounds: Rect | null): void {
+    this.toolbarExclusionBounds = bounds;
+    if (this.visible) this.syncOverlayWindows();
   }
 
   /** Forward an arbitrary IPC message to every overlay window. */
@@ -80,13 +89,24 @@ export class OverlayManager {
     }
   }
 
-  /** Toggle pointer-events through for one overlay (called when entering/leaving idle). */
-  setClickThrough(displayId: number, clickThrough: boolean): void {
+  /** Forward a message to a single overlay window. */
+  broadcastToDisplay(channel: string, payload: unknown, displayId: number | null): void {
+    if (displayId == null) return;
     const ov = this.overlays.get(displayId);
-    if (!ov) return;
-    // forward: true keeps mousemove flowing so the laser/spotlight follows the cursor
-    // even when clicks pass through.
-    ov.window.setIgnoreMouseEvents(clickThrough, { forward: true });
+    if (!ov || ov.window.isDestroyed()) return;
+    ov.window.webContents.send(channel, payload);
+  }
+
+  /** Toggle pointer-events through for the active overlay. */
+  setClickThrough(clickThrough: boolean): void {
+    this.clickThrough = clickThrough;
+    if (this.visible) this.syncOverlayWindows();
+  }
+
+  setPointerOverToolbar(pointerOverToolbar: boolean): void {
+    if (this.pointerOverToolbar === pointerOverToolbar) return;
+    this.pointerOverToolbar = pointerOverToolbar;
+    if (this.visible) this.syncOverlayWindows();
   }
 
   getDisplays(): DisplayInfo[] {
@@ -96,6 +116,14 @@ export class OverlayManager {
       scaleFactor: d.scaleFactor,
       primary: d.id === screen.getPrimaryDisplay().id,
     }));
+  }
+
+  private overlayWindowLevel(): "screen-saver" | "floating" {
+    // Windows and Linux need the highest native level so the transparent
+    // annotation window stays above other apps instead of only over the desktop.
+    // On macOS we keep the overlay one step below the toolbar to avoid native
+    // reordering that can leave the dock unreachable while drawing.
+    return process.platform === "darwin" ? "floating" : "screen-saver";
   }
 
   private createForDisplay(display: Display): void {
@@ -131,16 +159,14 @@ export class OverlayManager {
     });
 
     // Z-order strategy:
-    //   - Toolbar window:  level "screen-saver" (highest)
-    //   - Overlay windows: level "pop-up-menu"  (one below)
+    //   - macOS: toolbar "screen-saver", overlay "floating"
+    //   - Windows/Linux: toolbar and overlay both use "screen-saver"
     //
-    // We deliberately put the toolbar one level above the overlay so the dock
-    // is always clickable. If both lived at "screen-saver" macOS would re-order
-    // them whenever the overlay started capturing pointer events, which made
-    // the toolbar unreachable until the user pressed Esc to hide the overlay.
-    // "pop-up-menu" (NSPopUpMenuWindowLevel) is still high enough to render on
-    // top of normal app windows.
-    win.setAlwaysOnTop(true, "pop-up-menu");
+    // Windows in particular can leave a transparent "floating" overlay behind
+    // other applications, which makes annotation look like it only works on the
+    // desktop. We keep the toolbar clickable by reasserting its z-order from the
+    // owning main-process paths after the overlay is shown.
+    win.setAlwaysOnTop(true, this.overlayWindowLevel());
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
     // Begin in click-through mode so the user can interact with the desktop until
@@ -151,6 +177,10 @@ export class OverlayManager {
     void win.loadURL(url);
 
     this.overlays.set(display.id, { display, window: win });
+    if (this.activeDisplayId == null && display.id === screen.getPrimaryDisplay().id) {
+      this.activeDisplayId = display.id;
+    }
+    this.syncOverlayWindow(display.id);
   }
 
   private destroyForDisplay(id: number): void {
@@ -166,6 +196,77 @@ export class OverlayManager {
       this.createForDisplay(display);
       return;
     }
+    ov.display = display;
     ov.window.setBounds(display.bounds);
+  }
+
+  private syncOverlayWindows(): void {
+    for (const displayId of this.overlays.keys()) {
+      this.syncOverlayWindow(displayId);
+    }
+  }
+
+  private syncOverlayWindow(displayId: number): void {
+    const ov = this.overlays.get(displayId);
+    if (!ov || ov.window.isDestroyed()) return;
+
+    const shouldShow = this.visible && this.activeDisplayId === displayId;
+    if (shouldShow) {
+      const display = screen.getAllDisplays().find((candidate) => candidate.id === displayId);
+      if (display) {
+        ov.display = display;
+        ov.window.setBounds(display.bounds);
+      }
+      this.applyWindowShape(ov.window, ov.display.bounds, this.toolbarExclusionBounds);
+      ov.window.setAlwaysOnTop(true, this.overlayWindowLevel());
+      ov.window.showInactive();
+      // forward: true keeps mousemove flowing so the laser/spotlight follows the cursor
+      // even when clicks pass through.
+      ov.window.setIgnoreMouseEvents(this.clickThrough || this.pointerOverToolbar, { forward: true });
+      ov.window.webContents.send(IPC.OnVisibilityChange, { visible: true });
+      return;
+    }
+
+    this.applyWindowShape(ov.window, ov.display.bounds, null);
+    ov.window.setIgnoreMouseEvents(true, { forward: true });
+    ov.window.webContents.send(IPC.OnVisibilityChange, { visible: false });
+    ov.window.hide();
+  }
+
+  private applyWindowShape(win: BrowserWindow, bounds: Rectangle, exclusion: Rect | null): void {
+    if (typeof win.setShape !== "function") return;
+
+    const fullRect: Rectangle = { x: 0, y: 0, width: bounds.width, height: bounds.height };
+    if (!exclusion) {
+      win.setShape([fullRect]);
+      return;
+    }
+
+    const hole = {
+      x: Math.max(0, Math.min(bounds.width, Math.round(exclusion.x))),
+      y: Math.max(0, Math.min(bounds.height, Math.round(exclusion.y))),
+      width: Math.max(0, Math.min(bounds.width, Math.round(exclusion.width))),
+      height: Math.max(0, Math.min(bounds.height, Math.round(exclusion.height))),
+    };
+
+    if (hole.width === 0 || hole.height === 0) {
+      win.setShape([fullRect]);
+      return;
+    }
+
+    const right = hole.x + hole.width;
+    const bottom = hole.y + hole.height;
+    const rects: Rectangle[] = [];
+
+    if (hole.y > 0) rects.push({ x: 0, y: 0, width: bounds.width, height: hole.y });
+    if (hole.x > 0) rects.push({ x: 0, y: hole.y, width: hole.x, height: hole.height });
+    if (right < bounds.width) {
+      rects.push({ x: right, y: hole.y, width: bounds.width - right, height: hole.height });
+    }
+    if (bottom < bounds.height) {
+      rects.push({ x: 0, y: bottom, width: bounds.width, height: bounds.height - bottom });
+    }
+
+    win.setShape(rects.length ? rects : [fullRect]);
   }
 }

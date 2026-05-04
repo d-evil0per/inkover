@@ -15,54 +15,56 @@ abstract class DragShapeTool implements Tool {
   private start: Point | null = null;
   private current: Point | null = null;
   private style: StrokeStyle | null = null;
+  private previewId: string | null = null;
   private shift = false;
 
   onPointerDown(ev: PointerEvent, ctx: ToolContext): void {
     this.start = ev.pos;
     this.current = ev.pos;
     this.style = ctx.style();
+    this.previewId = newId();
     this.shift = ev.shift;
-    ctx.engine.setPreview(this.build(this.start, this.current, this.style, this.shift));
+    ctx.engine.setPreview(this.build(this.start, this.current, this.style, this.shift, this.previewId));
   }
   onPointerMove(ev: PointerEvent, ctx: ToolContext): void {
-    if (!this.start || !this.style) return;
+    if (!this.start || !this.style || !this.previewId) return;
     this.current = ev.pos;
     this.shift = ev.shift;
-    ctx.engine.setPreview(this.build(this.start, this.current, this.style, this.shift));
+    ctx.engine.setPreview(this.build(this.start, this.current, this.style, this.shift, this.previewId));
   }
   onPointerUp(_ev: PointerEvent, ctx: ToolContext): void {
     if (!this.start || !this.current || !this.style) return;
     ctx.engine.setPreview(null);
-    const final = this.build(this.start, this.current, this.style, this.shift);
+    const final = this.build(this.start, this.current, this.style, this.shift, newId());
     if (final) {
       ctx.engine.addShape(final);
       ctx.history.push(ctx.engine.getShapes());
     }
-    this.start = this.current = this.style = null;
+    this.start = this.current = this.style = this.previewId = null;
   }
 
-  protected abstract build(a: Point, b: Point, st: StrokeStyle, shift: boolean): Shape | null;
+  protected abstract build(a: Point, b: Point, st: StrokeStyle, shift: boolean, id: string): Shape | null;
 }
 
 export class LineTool extends DragShapeTool {
   id = "line";
-  protected build(a: Point, b: Point, st: StrokeStyle, shift: boolean) {
+  protected build(a: Point, b: Point, st: StrokeStyle, shift: boolean, id: string) {
     const to = shift ? snapAngle(a, b) : b;
-    return { id: newId(), kind: "line" as const, from: a, to, style: st };
+    return { id, kind: "line" as const, from: a, to, style: st };
   }
 }
 
 export class ArrowTool extends DragShapeTool {
   id = "arrow";
-  protected build(a: Point, b: Point, st: StrokeStyle, shift: boolean) {
+  protected build(a: Point, b: Point, st: StrokeStyle, shift: boolean, id: string) {
     const to = shift ? snapAngle(a, b) : b;
-    return { id: newId(), kind: "arrow" as const, from: a, to, style: st };
+    return { id, kind: "arrow" as const, from: a, to, style: st };
   }
 }
 
 export class RectTool extends DragShapeTool {
   id = "rect";
-  protected build(a: Point, b: Point, st: StrokeStyle, shift: boolean) {
+  protected build(a: Point, b: Point, st: StrokeStyle, shift: boolean, id: string) {
     let x = Math.min(a.x, b.x);
     let y = Math.min(a.y, b.y);
     let w = Math.abs(b.x - a.x);
@@ -75,13 +77,13 @@ export class RectTool extends DragShapeTool {
       w = h = s;
     }
     if (w < 1 && h < 1) return null;
-    return { id: newId(), kind: "rect" as const, x, y, w, h, style: st };
+    return { id, kind: "rect" as const, x, y, w, h, style: st };
   }
 }
 
 export class EllipseTool extends DragShapeTool {
   id = "ellipse";
-  protected build(a: Point, b: Point, st: StrokeStyle, shift: boolean) {
+  protected build(a: Point, b: Point, st: StrokeStyle, shift: boolean, id: string) {
     let cx = (a.x + b.x) / 2;
     let cy = (a.y + b.y) / 2;
     let rx = Math.abs(b.x - a.x) / 2;
@@ -93,7 +95,7 @@ export class EllipseTool extends DragShapeTool {
       cy = a.y + Math.sign(b.y - a.y || 1) * r;
     }
     if (rx < 1 && ry < 1) return null;
-    return { id: newId(), kind: "ellipse" as const, cx, cy, rx, ry, style: st };
+    return { id, kind: "ellipse" as const, cx, cy, rx, ry, style: st };
   }
 }
 

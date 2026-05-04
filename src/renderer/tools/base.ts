@@ -11,10 +11,6 @@ export interface ToolContext {
   history: History;
   /** Current global stroke style — tools should clone, not mutate. */
   style: () => StrokeStyle;
-  /** True if smart shape recognition is enabled in settings. */
-  smartShapes: () => boolean;
-  /** Generate a fresh shape id. */
-  newId: () => string;
 }
 
 export interface PointerEvent {

@@ -2,7 +2,7 @@
 // reason InkOver feels lighter than DrawPen, which lives in the menu bar with a
 // fixed toolbar.
 
-import { Menu, Tray, nativeImage, app } from "electron";
+import { Menu, Tray, nativeImage } from "electron";
 import { join } from "path";
 
 export interface TrayHandlers {

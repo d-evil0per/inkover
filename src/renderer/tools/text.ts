@@ -57,12 +57,13 @@ export class TextTool implements Tool {
 
   private commit(ctx: ToolContext): void {
     if (!this.editor) return;
-    const text = this.editor.value.trim();
-    const x = Number(this.editor.dataset.posX);
-    const y = Number(this.editor.dataset.posY);
-    const size = Math.max(14, ctx.style().width * 6);
-    this.editor.remove();
+    const editor = this.editor;
     this.editor = null;
+    const text = editor.value.trim();
+    const x = Number(editor.dataset.posX);
+    const y = Number(editor.dataset.posY);
+    const size = Math.max(14, ctx.style().width * 6);
+    editor.remove();
     if (!text) return;
     const style = ctx.style();
     ctx.engine.addShape({

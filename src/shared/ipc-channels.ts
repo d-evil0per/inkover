@@ -6,9 +6,11 @@ export const IPC = {
   GetSettings: "settings:get",
   UpdateSettings: "settings:update",
   GetDisplays: "displays:get",
+  GetCursorScreenPoint: "cursor:get-screen-point",
   SaveDrawing: "drawing:save",
   LoadDrawing: "drawing:load",
   ExportImage: "drawing:export-image",
+  ExportSvg: "drawing:export-svg",
   GetCaptureSources: "capture:sources",
 
   // Recording controls
@@ -16,7 +18,7 @@ export const IPC = {
   RecordStop: "record:stop",
   RecordPause: "record:pause",
   RecordResume: "record:resume",
-  RecordEncodeGif: "record:encode-gif",
+  RecordCaptureFailed: "record:capture-failed",
   RecordSaveBlob: "record:save-blob", // renderer pushes encoded blob bytes
 
   // Toolbar ↔ Overlay coordination
@@ -25,14 +27,18 @@ export const IPC = {
   ToolbarUndo: "toolbar:undo",
   ToolbarRedo: "toolbar:redo",
   ToolbarClear: "toolbar:clear",
+  ToolbarExport: "toolbar:export",
   ToolbarToggleVisible: "toolbar:toggle-visible",
-  ToolbarResize: "toolbar:resize",
+  ToolbarSetVisibleBounds: "toolbar:set-visible-bounds",
+  OverlaySetPointerOverToolbar: "overlay:set-pointer-over-toolbar",
 
   // Main → Renderer (broadcast / subscribe)
   OnVisibilityChange: "overlay:visibility-change",
   OnToolChange: "overlay:tool-change",
   OnStyleChange: "overlay:style-change",
+  OnToolbarBoundsChange: "overlay:toolbar-bounds-change",
   OnHistoryAction: "overlay:history-action",
+  OnExportRequest: "overlay:export-request",
   OnRecorderStatus: "recorder:status",
   OnSettingsChange: "settings:change",
 } as const;

@@ -4,7 +4,7 @@
 // canvas via `setPreview` and tick `onFrame` to fade them out.
 
 import type { Point } from "@shared/types";
-import type { Tool, ToolContext, PointerEvent } from "./base";
+import type { Tool, PointerEvent } from "./base";
 
 interface LaserDot {
   x: number;

@@ -7,7 +7,6 @@
 import type { Point, Shape, StrokeStyle } from "@shared/types";
 import type { Tool, ToolContext, PointerEvent } from "./base";
 import { newId } from "./base";
-import { recognizeStroke } from "../recognition/auto-shape";
 
 const MIN_DIST_PX = 1.5;        // ignore samples closer than this to the previous one
 const COLINEAR_TOLERANCE = 0.4; // px — drop midpoints that lie this close to a straight line
@@ -39,19 +38,7 @@ export class PenTool implements Tool {
   onPointerUp(_ev: PointerEvent, ctx: ToolContext): void {
     if (!this.active || this.active.kind !== "stroke") return;
     ctx.engine.setPreview(null);
-    let final: Shape = this.active;
-
-    // Recognition disabled here to preserve freehand strokes and avoid
-    // surprise replacements. If you want recognition later, re-enable the
-    // code below or toggle via settings.
-    /*
-    if (ctx.smartShapes() && this.points.length > 8) {
-      const cleaned = recognizeStroke(this.points, this.active.style, newId);
-      if (cleaned) final = cleaned;
-    }
-    */
-
-    ctx.engine.addShape(final);
+    ctx.engine.addShape(this.active);
     ctx.history.push(ctx.engine.getShapes());
     this.active = null;
     this.points = [];

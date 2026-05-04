@@ -1,7 +1,6 @@
-// This module runs inside the hidden "capture" BrowserWindow created by
-// Recorder.start(). It uses getUserMedia with chromeMediaSource to pull the
-// screen, MediaRecorder to encode WebM, and an offscreen canvas + a tiny
-// in-renderer GIF encoder to optionally export an animated GIF.
+// Screen recording runs in the visible toolbar renderer. We request display
+// media directly from the click gesture, MediaRecorder encodes WebM, and the
+// same in-renderer GIF encoder converts the result to GIF when needed.
 //
 // We deliberately keep dependencies zero — gif.js is a great library but
 // pulling it in via CDN here would break offline builds. Instead we expose
@@ -14,34 +13,105 @@ interface CaptureState {
   stream: MediaStream | null;
   chunks: Blob[];
   startedAt: number;
+  format: "webm" | "gif";
+  cleanup: (() => void) | null;
+  gifCapture: GifCaptureState | null;
 }
 
-const state: CaptureState = { recorder: null, stream: null, chunks: [], startedAt: 0 };
+const state: CaptureState = {
+  recorder: null,
+  stream: null,
+  chunks: [],
+  startedAt: 0,
+  format: "webm",
+  cleanup: null,
+  gifCapture: null,
+};
 
-export async function startCapture(sourceId: string): Promise<void> {
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: false,
-    // Electron-specific constraints — the renderer process is granted access via
-    // chromeMediaSource when the source id was returned by desktopCapturer.
-    // `mandatory` is a non-standard Chromium constraint used by Electron's
-    // desktopCapturer. We cast to any to bypass strict TS lib checks.
-    video: {
-      mandatory: { chromeMediaSource: "desktop", chromeMediaSourceId: sourceId },
-    } as unknown as MediaTrackConstraints,
-  });
+type SmokeFrameContext = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+
+interface GifCaptureState {
+  video: HTMLVideoElement;
+  frames: Uint8ClampedArray[];
+  width: number;
+  height: number;
+  delayCs: number;
+  sampleIntervalId: number;
+}
+
+interface GifCaptureSnapshot {
+  frames: Uint8ClampedArray[];
+  width: number;
+  height: number;
+  delayCs: number;
+}
+
+const GIF_MAX_WIDTH = 320;
+const GIF_SAMPLE_FPS = 5;
+const GIF_MAX_FRAMES = 180;
+const GIF_PALETTE_SIZE = 64;
+
+export async function startCapture(opts?: { format?: "webm" | "gif" }): Promise<void> {
+  if (state.recorder && state.recorder.state !== "inactive") {
+    throw new Error("Recording is already running.");
+  }
+
+  state.format = opts?.format === "gif" ? "gif" : "webm";
+  const captureSource = await acquireCaptureStream();
+  const { stream, cleanup } = captureSource;
+
+  const videoTrack = stream.getVideoTracks()[0];
+  if (!videoTrack) {
+    stream.getTracks().forEach((track) => track.stop());
+    cleanup?.();
+    throw new Error("Display capture started without a video track.");
+  }
+  videoTrack.addEventListener(
+    "ended",
+    () => {
+      if (!state.recorder || state.recorder.state === "inactive") return;
+      stopActiveRecorder(state.recorder);
+    },
+    { once: true },
+  );
+
+  const gifCapture = state.format === "gif"
+    ? await createGifCapture(stream)
+    : null;
+
   const mime = pickMimeType();
   const recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 8_000_000 });
   recorder.ondataavailable = (e) => {
     if (e.data.size) state.chunks.push(e.data);
   };
   recorder.onstop = () => {
-    void finalize().catch((err) => console.error("[recorder] finalize error", err));
+    void finalize().catch((err) => {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[recorder] finalize error", err);
+      stopStreamTracks();
+      resetCaptureState();
+      void window.inkover.recordCaptureFailed(message);
+    });
   };
-  recorder.start(250); // 250ms chunks → smooth seekbar in the resulting webm
+  recorder.onerror = (event) => {
+    const message = event.error?.message ?? "MediaRecorder failed.";
+    console.error("[recorder] recorder error", event.error ?? event);
+    stopStreamTracks();
+    resetCaptureState();
+    void window.inkover.recordCaptureFailed(message);
+  };
+  recorder.start(250); // 250ms chunks -> smooth seekbar in the resulting webm
+  if (recorder.state !== "recording") {
+    stopStreamTracks();
+    resetCaptureState();
+    throw new Error("MediaRecorder failed to enter recording state.");
+  }
   state.recorder = recorder;
   state.stream = stream;
+  state.cleanup = cleanup;
   state.chunks = [];
   state.startedAt = performance.now();
+  state.gifCapture = gifCapture;
 }
 
 export function pauseCapture(): void {
@@ -56,24 +126,198 @@ export async function stopCapture(): Promise<void> {
   if (state.recorder.state !== "inactive") {
     await new Promise<void>((resolve) => {
       state.recorder!.addEventListener("stop", () => resolve(), { once: true });
-      state.recorder!.stop();
+      stopActiveRecorder(state.recorder);
     });
   }
-  state.stream?.getTracks().forEach((t) => t.stop());
+  stopStreamTracks();
+}
+
+function stopActiveRecorder(recorder: MediaRecorder | null): void {
+  if (!recorder || recorder.state === "inactive") return;
+  requestRecorderData(recorder);
+  recorder.stop();
+}
+
+function requestRecorderData(recorder: MediaRecorder | null): void {
+  if (!recorder || recorder.state === "inactive") return;
+  try {
+    recorder.requestData();
+  } catch {
+    // Some engines reject requestData during rapid stop transitions; the stop
+    // still proceeds and ondataavailable may already have fired.
+  }
+}
+
+function stopStreamTracks(): void {
+  const cleanup = state.cleanup;
+  state.cleanup = null;
+  state.stream?.getTracks().forEach((track) => track.stop());
   state.stream = null;
+  if (state.gifCapture) {
+    disposeGifCapture(state.gifCapture);
+    state.gifCapture = null;
+  }
+  cleanup?.();
+}
+
+function resetCaptureState(): void {
+  state.recorder = null;
+  state.stream = null;
+  state.chunks = [];
+  state.startedAt = 0;
+  state.format = "webm";
+  state.cleanup = null;
+  state.gifCapture = null;
+}
+
+async function acquireCaptureStream(): Promise<{ stream: MediaStream; cleanup: (() => void) | null }> {
+  const runtime = window.inkover.getRuntimeInfo();
+  if (runtime.smokeMode) return createSmokeCaptureStream();
+  return {
+    stream: await navigator.mediaDevices.getDisplayMedia({
+      audio: false,
+      video: {
+        frameRate: { ideal: 30, max: 30 },
+      },
+    }),
+    cleanup: null,
+  };
+}
+
+function createSmokeCaptureStream(): { stream: MediaStream; cleanup: () => void } {
+  const canvas = document.createElement("canvas");
+  canvas.width = 640;
+  canvas.height = 360;
+  canvas.style.position = "fixed";
+  canvas.style.left = "-99999px";
+  canvas.style.top = "-99999px";
+  canvas.style.width = "1px";
+  canvas.style.height = "1px";
+  canvas.style.opacity = "0";
+  canvas.style.pointerEvents = "none";
+  document.body.appendChild(canvas);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Smoke capture canvas unavailable.");
+
+  let frame = 0;
+  let rafId = 0;
+  const renderFrame = () => {
+    frame += 1;
+    renderSmokeCaptureFrame(ctx, canvas.width, canvas.height, frame);
+    rafId = requestAnimationFrame(renderFrame);
+  };
+
+  renderFrame();
+  const stream = canvas.captureStream(12);
+  return {
+    stream,
+    cleanup: () => {
+      cancelAnimationFrame(rafId);
+      canvas.remove();
+    },
+  };
 }
 
 async function finalize(): Promise<void> {
-  const webm = new Blob(state.chunks, { type: state.recorder?.mimeType ?? "video/webm" });
-  const wantsGif = new URLSearchParams(location.search).get("format") === "gif";
+  const runtime = window.inkover.getRuntimeInfo();
+  const wantsGif = state.format === "gif";
+  const gifSnapshot = wantsGif ? snapshotGifCapture() : null;
   if (wantsGif) {
-    const gif = await encodeGif(webm);
+    const gif = gifSnapshot && gifSnapshot.frames.length > 0
+      ? writeGif89a(gifSnapshot.frames, gifSnapshot.width, gifSnapshot.height, gifSnapshot.delayCs, GIF_PALETTE_SIZE)
+      : runtime.smokeMode && state.chunks.length === 0
+        ? await createSmokeFallbackGif()
+        : await encodeGif(new Blob(state.chunks, { type: state.recorder?.mimeType ?? "video/webm" }));
     const ab = await gif.arrayBuffer();
     await window.inkover.recordSaveBlob("gif", ab, `inkover-${Date.now()}.gif`);
   } else {
+    const webm = runtime.smokeMode && state.chunks.length === 0
+      ? new Blob(
+          [
+            new TextEncoder().encode(
+              JSON.stringify({
+                smokeMode: true,
+                recordedAt: new Date().toISOString(),
+                format: state.format,
+              }),
+            ),
+          ],
+          { type: state.recorder?.mimeType ?? "video/webm" },
+        )
+      : new Blob(state.chunks, { type: state.recorder?.mimeType ?? "video/webm" });
     const ab = await webm.arrayBuffer();
     await window.inkover.recordSaveBlob("webm", ab, `inkover-${Date.now()}.webm`);
   }
+  stopStreamTracks();
+  resetCaptureState();
+}
+
+async function createGifCapture(stream: MediaStream): Promise<GifCaptureState> {
+  const video = document.createElement("video");
+  video.preload = "auto";
+  video.muted = true;
+  video.playsInline = true;
+  video.autoplay = true;
+  video.style.position = "fixed";
+  video.style.left = "-99999px";
+  video.style.top = "-99999px";
+  video.style.width = "1px";
+  video.style.height = "1px";
+  video.style.opacity = "0";
+  video.style.pointerEvents = "none";
+  video.srcObject = stream;
+  document.body.appendChild(video);
+  await video.play().catch(() => undefined);
+  await waitForVideoMetadata(video);
+  await waitForVideoFrameData(video);
+
+  const width = Math.min(video.videoWidth, GIF_MAX_WIDTH);
+  const height = Math.round((width / Math.max(1, video.videoWidth)) * video.videoHeight);
+  if (!width || !height) throw new Error("GIF capture video metadata was unavailable.");
+
+  const canvas = new OffscreenCanvas(width, height);
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) throw new Error("GIF capture canvas unavailable.");
+
+  const frames: Uint8ClampedArray[] = [];
+  const delayCs = Math.max(1, Math.round(100 / GIF_SAMPLE_FPS));
+  const sampleFrame = () => {
+    if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || frames.length >= GIF_MAX_FRAMES) return;
+    ctx.drawImage(video, 0, 0, width, height);
+    frames.push(ctx.getImageData(0, 0, width, height).data.slice());
+    if (frames.length >= GIF_MAX_FRAMES) window.clearInterval(sampleIntervalId);
+  };
+
+  sampleFrame();
+  const sampleIntervalId = window.setInterval(sampleFrame, Math.round(1000 / GIF_SAMPLE_FPS));
+  return {
+    video,
+    frames,
+    width,
+    height,
+    delayCs,
+    sampleIntervalId,
+  };
+}
+
+function snapshotGifCapture(): GifCaptureSnapshot | null {
+  const gifCapture = state.gifCapture;
+  if (!gifCapture) return null;
+  state.gifCapture = null;
+  disposeGifCapture(gifCapture);
+  return {
+    frames: gifCapture.frames,
+    width: gifCapture.width,
+    height: gifCapture.height,
+    delayCs: gifCapture.delayCs,
+  };
+}
+
+function disposeGifCapture(gifCapture: GifCaptureState): void {
+  window.clearInterval(gifCapture.sampleIntervalId);
+  gifCapture.video.pause();
+  gifCapture.video.srcObject = null;
+  gifCapture.video.remove();
 }
 
 function pickMimeType(): string {
@@ -93,51 +337,172 @@ function pickMimeType(): string {
 // This lives inline because it avoids a CDN dep, and the encoder is small
 // enough that you can read it end-to-end below.
 
+function renderSmokeCaptureFrame(ctx: SmokeFrameContext, width: number, height: number, frame: number): void {
+  ctx.fillStyle = `hsl(${(frame * 7) % 360} 75% 48%)`;
+  ctx.fillRect(0, 0, width, height);
+  ctx.fillStyle = "rgba(255, 255, 255, 0.22)";
+  ctx.fillRect(24, 24, width - 48, 72);
+  ctx.fillStyle = "#111";
+  ctx.font = "bold 28px sans-serif";
+  ctx.fillText(`InkOver smoke capture ${frame}`, 40, 68);
+  ctx.fillStyle = "#fff";
+  ctx.font = "18px monospace";
+  ctx.fillText(new Date().toISOString(), 40, 118);
+  ctx.fillRect(40 + ((frame * 9) % Math.max(160, width - 220)), 170, 120, 80);
+}
+
+async function createSmokeFallbackGif(): Promise<Blob> {
+  const width = 320;
+  const height = 180;
+  const fps = 12;
+  const totalFrames = 12;
+  const canvas = new OffscreenCanvas(width, height);
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) throw new Error("Smoke GIF fallback canvas unavailable.");
+  const frames: Uint8ClampedArray[] = [];
+  for (let frame = 1; frame <= totalFrames; frame += 1) {
+    renderSmokeCaptureFrame(ctx, width, height, frame);
+    frames.push(ctx.getImageData(0, 0, width, height).data.slice());
+  }
+  return writeGif89a(frames, width, height, Math.round(100 / fps));
+}
+
 async function encodeGif(webm: Blob): Promise<Blob> {
   const url = URL.createObjectURL(webm);
   const video = document.createElement("video");
-  video.src = url;
-  video.muted = true;
-  video.playsInline = true;
-  await video.play().catch(() => {});
-  await new Promise<void>((res) => {
-    if (video.readyState >= 2) res();
-    else video.addEventListener("loadeddata", () => res(), { once: true });
-  });
-  const W = Math.min(video.videoWidth, 1280);
-  const H = Math.round((W / video.videoWidth) * video.videoHeight);
-  const canvas = new OffscreenCanvas(W, H);
-  const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
-  const fps = 12;
-  const dur = video.duration || 5;
-  const totalFrames = Math.min(Math.ceil(dur * fps), 600); // cap at 50s @ 12fps
-  const frames: Uint8ClampedArray[] = [];
-  for (let i = 0; i < totalFrames; i++) {
-    const t = (i / fps);
-    if (t > dur) break;
-    video.currentTime = t;
-    await new Promise<void>((r) => video.addEventListener("seeked", () => r(), { once: true }));
-    ctx.drawImage(video, 0, 0, W, H);
-    frames.push(ctx.getImageData(0, 0, W, H).data.slice());
+  try {
+    video.preload = "auto";
+    video.src = url;
+    video.muted = true;
+    video.playsInline = true;
+    await waitForVideoMetadata(video);
+    await waitForVideoFrameData(video);
+
+    const width = Math.min(video.videoWidth, 1280);
+    const height = Math.round((width / Math.max(1, video.videoWidth)) * video.videoHeight);
+    if (!width || !height) throw new Error("Recorded video had no decodable frames.");
+
+    const canvas = new OffscreenCanvas(width, height);
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) throw new Error("GIF export canvas unavailable.");
+
+    const fps = 12;
+    const recordedSeconds = state.startedAt > 0
+      ? Math.max(0.25, (performance.now() - state.startedAt) / 1000)
+      : 5;
+    const duration = Number.isFinite(video.duration) && video.duration > 0
+      ? video.duration
+      : recordedSeconds;
+    const totalFrames = Math.max(1, Math.min(Math.ceil(duration * fps), 600));
+    const frames: Uint8ClampedArray[] = [];
+    for (let index = 0; index < totalFrames; index += 1) {
+      const targetTime = Math.max(
+        0,
+        Math.min(index / fps, Math.max(0, duration - 1 / fps)),
+      );
+      await seekVideoFrame(video, targetTime);
+      ctx.drawImage(video, 0, 0, width, height);
+      frames.push(ctx.getImageData(0, 0, width, height).data.slice());
+    }
+    return writeGif89a(frames, width, height, Math.round(100 / fps));
+  } finally {
+    URL.revokeObjectURL(url);
+    video.removeAttribute("src");
+    video.load();
   }
-  URL.revokeObjectURL(url);
-  return writeGif89a(frames, W, H, Math.round(100 / fps));
+}
+
+async function waitForVideoMetadata(video: HTMLVideoElement): Promise<void> {
+  if (video.readyState >= HTMLMediaElement.HAVE_METADATA && video.videoWidth > 0 && video.videoHeight > 0) return;
+  await waitForVideoEvent(video, "loadedmetadata", 5000, "video metadata");
+  if (!video.videoWidth || !video.videoHeight) throw new Error("Recorded video metadata was unavailable.");
+}
+
+async function waitForVideoFrameData(video: HTMLVideoElement): Promise<void> {
+  if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) return;
+  await waitForVideoEvent(video, "loadeddata", 5000, "video frame data");
+}
+
+async function seekVideoFrame(video: HTMLVideoElement, time: number): Promise<void> {
+  if (Math.abs(video.currentTime - time) < 0.001) {
+    await waitForVideoFrameData(video);
+    return;
+  }
+  await new Promise<void>((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      cleanup();
+      reject(new Error(`Timed out seeking recorded video to ${time.toFixed(3)}s.`));
+    }, 5000);
+    const cleanup = () => {
+      window.clearTimeout(timeout);
+      video.removeEventListener("seeked", handleSeeked);
+      video.removeEventListener("error", handleError);
+    };
+    const handleSeeked = () => {
+      cleanup();
+      resolve();
+    };
+    const handleError = () => {
+      cleanup();
+      reject(new Error("Recorded video became unreadable during GIF export."));
+    };
+    video.addEventListener("seeked", handleSeeked);
+    video.addEventListener("error", handleError);
+    video.currentTime = time;
+  });
+  await waitForVideoFrameData(video);
+}
+
+function waitForVideoEvent(
+  video: HTMLVideoElement,
+  eventName: "loadedmetadata" | "loadeddata",
+  timeoutMs: number,
+  label: string,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      cleanup();
+      reject(new Error(`Timed out waiting for ${label}.`));
+    }, timeoutMs);
+    const cleanup = () => {
+      window.clearTimeout(timeout);
+      video.removeEventListener(eventName, handleEvent);
+      video.removeEventListener("error", handleError);
+    };
+    const handleEvent = () => {
+      cleanup();
+      resolve();
+    };
+    const handleError = () => {
+      cleanup();
+      reject(new Error(`Recorded video failed while waiting for ${label}.`));
+    };
+    video.addEventListener(eventName, handleEvent);
+    video.addEventListener("error", handleError);
+  });
 }
 
 /**
- * Minimal GIF89a encoder with global palette quantization (median-cut to 256).
+ * Minimal GIF89a encoder with global palette quantization.
  * It is not the fastest in the world but it is dependency-free and, more
  * importantly, fits in this scaffold so reviewers can see what's happening.
  */
-function writeGif89a(frames: Uint8ClampedArray[], w: number, h: number, delayCs: number): Blob {
-  const palette = quantize(frames, 256);
+function writeGif89a(
+  frames: Uint8ClampedArray[],
+  w: number,
+  h: number,
+  delayCs: number,
+  paletteSize = 256,
+): Blob {
+  const globalColorTableSize = normalizeGifPaletteSize(paletteSize);
+  const palette = quantize(frames, globalColorTableSize);
   const indexed = frames.map((f) => indexFrame(f, palette));
   const out = new ByteWriter();
   // Header
   out.bytes("GIF89a");
   // Logical screen descriptor
   out.u16(w); out.u16(h);
-  out.byte(0xF7); // global color table, 256 entries
+  out.byte(0x80 | 0x70 | (Math.log2(globalColorTableSize) - 1));
   out.byte(0); out.byte(0);
   // Global color table
   for (const c of palette) { out.byte(c[0]); out.byte(c[1]); out.byte(c[2]); }
@@ -155,8 +520,9 @@ function writeGif89a(frames: Uint8ClampedArray[], w: number, h: number, delayCs:
     out.u16(0); out.u16(0); out.u16(w); out.u16(h);
     out.byte(0);
     // LZW minimum code size
-    out.byte(8);
-    const codes = lzwEncode(f, 8);
+    const minCodeSize = Math.max(2, Math.log2(globalColorTableSize));
+    out.byte(minCodeSize);
+    const codes = lzwEncode(f, minCodeSize);
     // Sub-blocks (max 255 bytes each)
     for (let i = 0; i < codes.length; i += 255) {
       const slice = codes.slice(i, i + 255);
@@ -175,6 +541,11 @@ class ByteWriter {
   u16(v: number) { this.byte(v & 0xff); this.byte((v >> 8) & 0xff); }
   bytes(s: string) { for (let i = 0; i < s.length; i++) this.byte(s.charCodeAt(i)); }
   toUint8Array() { return new Uint8Array(this.buf); }
+}
+
+function normalizeGifPaletteSize(paletteSize: number): number {
+  const nextPowerOfTwo = 2 ** Math.ceil(Math.log2(Math.max(2, paletteSize)));
+  return Math.min(256, Math.max(2, nextPowerOfTwo));
 }
 
 /** Median-cut palette quantization across all frames combined. */
@@ -245,7 +616,6 @@ function lzwEncode(input: Uint8Array, minCodeSize: number): Uint8Array {
   let nextCode = eoiCode + 1;
   const dict = new Map<string, number>();
   for (let i = 0; i < clearCode; i++) dict.set(String.fromCharCode(i), i);
-  const bits: number[] = [];
   let buffer = 0;
   let bufferLen = 0;
   const out: number[] = [];

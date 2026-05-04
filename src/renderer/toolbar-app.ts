@@ -5,25 +5,39 @@
 // reveals a horizontal flyout on demand. This keeps the dock looking like a
 // modern macOS Dock instead of a kitchen-sink toolbox.
 
-import type { Settings, ToolId, StrokeStyle, RecorderStatus } from "@shared/types";
-import { startCapture, stopCapture } from "./recorder-page";
+import type { ExportFormat, Settings, ToolId, StrokeStyle, RecorderStatus } from "@shared/types";
+import { pauseCapture, resumeCapture, startCapture, stopCapture } from "./recorder-page";
 
 const ROOT = document.getElementById("root") as HTMLDivElement;
 
-// ---- Capture-mode bootstrap (hidden recorder window) ---------------------
-const url = new URL(location.href);
-if (url.searchParams.get("capture") === "1") {
-  const sourceId = url.searchParams.get("sourceId") ?? "";
-  void startCapture(sourceId).catch((err) => console.error("[capture] start", err));
-  window.inkover.onRecordStopRequest(() => void stopCapture());
-  window.inkover.onRecordPauseRequest(() => {
-    import("./recorder-page").then((m) => m.pauseCapture());
-  });
-  window.inkover.onRecordResumeRequest(() => {
-    import("./recorder-page").then((m) => m.resumeCapture());
-  });
-} else {
-  void initToolbar();
+void initToolbar();
+
+function getInkoverApi(): Window["inkover"] | undefined {
+  return (window as Window & { inkover?: Window["inkover"] }).inkover;
+}
+
+function renderStartupError(message: string, detail?: string): void {
+  const box = document.createElement("div");
+  box.className = "tb-startup-error";
+
+  const title = document.createElement("strong");
+  title.textContent = "InkOver bridge unavailable";
+  box.appendChild(title);
+
+  const body = document.createElement("p");
+  body.textContent = message;
+  box.appendChild(body);
+
+  if (detail) {
+    const info = document.createElement("code");
+    info.textContent = detail;
+    box.appendChild(info);
+  }
+
+  document.body.innerHTML = "";
+  document.body.appendChild(ROOT);
+  ROOT.className = "tb-root tb-root--startup-error";
+  ROOT.replaceChildren(box);
 }
 
 // ---- Icons ---------------------------------------------------------------
@@ -50,7 +64,9 @@ const I = {
   record: `<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4" fill="currentColor"/>`,
   chevronLeft: `<path d="m15 18-6-6 6-6"/>`,
   chevronRight: `<path d="m9 18 6-6-6-6"/>`,
-  hide: `<path d="M18 6 6 18"/><path d="m6 6 12 12"/>`,
+  eyeOpen: `<path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/>`,
+  eyeClosed: `<path d="M3 3 21 21"/><path d="M10.6 10.7a2 2 0 0 0 2.7 2.7"/><path d="M9.9 5.2A10.7 10.7 0 0 1 12 5c6 0 9.5 7 9.5 7a17.2 17.2 0 0 1-3.2 3.9"/><path d="M6.2 6.3A16.5 16.5 0 0 0 2.5 12s3.5 7 9.5 7a9.9 9.9 0 0 0 3.1-.5"/>`,
+  export: `<path d="M12 3v11"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/>`,
 };
 
 function icon(path: string, size = 18): string {
@@ -67,7 +83,7 @@ interface ToolMeta {
 }
 
 interface ToolGroup {
-  groupId: "shapes" | "presentation";
+  groupId: "ink" | "shapes" | "presentation";
   label: string;
   hint: string;
   iconKey: keyof typeof I;
@@ -81,6 +97,15 @@ const TOOLS_TXT: ToolMeta = { id: "text",        label: "Text",        hint: "Dr
 const TOOLS_BLR: ToolMeta = { id: "blur",        label: "Blur",        hint: "Mosaic / redact a region", shortcut: "B", iconKey: "blur" };
 const TOOLS_ERS: ToolMeta = { id: "eraser",      label: "Eraser",      hint: "Drag to remove shapes",    shortcut: "X", iconKey: "eraser" };
 const TOOLS_SEL: ToolMeta = { id: "select",      label: "Pass-through",hint: "Click through to desktop", shortcut: "V", iconKey: "select" };
+
+const INK_GROUP: ToolGroup = {
+  groupId: "ink",
+  label: "Ink",
+  hint: "Pen, highlighter, eraser",
+  iconKey: "pen",
+  defaultVariant: "pen",
+  variants: [TOOLS_PEN, TOOLS_HL, TOOLS_ERS],
+};
 
 const SHAPES_GROUP: ToolGroup = {
   groupId: "shapes",
@@ -99,13 +124,14 @@ const SHAPES_GROUP: ToolGroup = {
 const PRESENT_GROUP: ToolGroup = {
   groupId: "presentation",
   label: "Presentation",
-  hint: "Laser, spotlight, magnifier",
+  hint: "Laser, spotlight, magnifier, blur",
   iconKey: "presentation",
   defaultVariant: "laser",
   variants: [
     { id: "laser",     label: "Laser",     hint: "Glowing pointer trail",       shortcut: "J", iconKey: "laser" },
     { id: "spotlight", label: "Spotlight", hint: "Dim everything but a circle", shortcut: "S", iconKey: "spotlight" },
     { id: "magnifier", label: "Magnifier", hint: "Loupe over the cursor",       shortcut: "M", iconKey: "magnifier" },
+    TOOLS_BLR,
   ],
 };
 
@@ -114,44 +140,76 @@ type Slot =
   | { kind: "group"; group: ToolGroup };
 
 const PRIMARY_SLOTS: Slot[] = [
-  { kind: "tool", tool: TOOLS_PEN },
-  { kind: "tool", tool: TOOLS_HL },
+  { kind: "tool", tool: TOOLS_SEL },
+  { kind: "group", group: INK_GROUP },
   { kind: "group", group: SHAPES_GROUP },
   { kind: "tool", tool: TOOLS_TXT },
   { kind: "group", group: PRESENT_GROUP },
-  { kind: "tool", tool: TOOLS_BLR },
-  { kind: "tool", tool: TOOLS_ERS },
 ];
+
+const TOOL_SHORTCUTS: Partial<Record<string, ToolId>> = {
+  p: "pen",
+  h: "highlighter",
+  l: "line",
+  a: "arrow",
+  r: "rect",
+  o: "ellipse",
+  t: "text",
+  x: "eraser",
+  j: "laser",
+  s: "spotlight",
+  m: "magnifier",
+  b: "blur",
+  v: "select",
+};
 
 // ---- App initialization -------------------------------------------------
 
 async function initToolbar() {
-  const settings: Settings = await window.inkover.getSettings();
+  const inkover = getInkoverApi();
+  if (!inkover) {
+    const browserHint = location.protocol.startsWith("http")
+      ? "This page is running in the Vite browser context, not inside the Electron toolbar window."
+      : "The Electron preload script did not attach before the toolbar renderer started.";
+    const message = `${browserHint} Open the toolbar through Electron to access the window.inkover API.`;
+    console.error("[toolbar] missing window.inkover bridge", { href: location.href });
+    renderStartupError(message, location.href);
+    return;
+  }
+
+  const settings: Settings = await inkover.getSettings();
   const state = {
-    activeTool: "pen" as ToolId,
+    activeTool: "select" as ToolId,
     style: { ...settings.defaultStyle } as StrokeStyle,
     settings,
     recorder: { state: "idle" } as RecorderStatus,
     collapsed: false,
+    overlayVisible: true,
+    activeInk: INK_GROUP.defaultVariant,
     activeShape: SHAPES_GROUP.defaultVariant,
     activePresent: PRESENT_GROUP.defaultVariant,
-    openFlyout: null as null | "shapes" | "presentation" | "style" | "record",
+    openFlyout: null as null | "ink" | "shapes" | "presentation" | "style" | "export" | "record",
     recordFormat: "webm" as "webm" | "gif",
   };
 
   document.body.innerHTML = "";
   document.body.appendChild(ROOT);
   ROOT.className = "tb-root";
+  let visibleBoundsFrame = 0;
+  let captureAttemptId = 0;
+
   render();
 
-  // Estimate required toolbar width to fit an N-button horizontal flyout.
-  function computeRequiredWidthForVariants(n: number): number {
-    const btnSize = 36;
-    const gap = 8;
-    const padding = 24; // flyout padding + margins
-    const arrow = 12;
-    const width = padding + arrow + n * btnSize + Math.max(0, (n - 1) * gap);
-    return Math.min(Math.max(220, Math.ceil(width)), 480);
+  // Schedule an extra visible-bounds sync after the flyout has fully laid
+  // out (and any open animation has settled) to make sure the native window
+  // grows wide enough to contain the flyout. Two rAFs guarantees the
+  // browser has performed layout for the just-rendered DOM.
+  function syncBoundsAfterFlyoutLayout(): void {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        syncVisibleBounds();
+      });
+    });
   }
 
   document.addEventListener("click", (e) => {
@@ -166,6 +224,47 @@ async function initToolbar() {
     ROOT.innerHTML = state.collapsed ? renderCollapsed() : renderExpanded();
     bindHandlers();
     document.body.dataset.collapsed = String(state.collapsed);
+    queueVisibleBoundsSync();
+  }
+
+  function queueVisibleBoundsSync(): void {
+    if (visibleBoundsFrame) cancelAnimationFrame(visibleBoundsFrame);
+    visibleBoundsFrame = requestAnimationFrame(() => {
+      visibleBoundsFrame = 0;
+      syncVisibleBounds();
+    });
+  }
+
+  function syncVisibleBounds(): void {
+    const anchors = Array.from(
+      ROOT.querySelectorAll<HTMLElement>(".tb-pill, .tb-collapsed, [data-flyout]"),
+    ).filter((el) => el.offsetParent !== null);
+    if (anchors.length === 0) {
+      void window.inkover.setToolbarVisibleBounds(null);
+      return;
+    }
+
+    let left = Number.POSITIVE_INFINITY;
+    let top = Number.POSITIVE_INFINITY;
+    let right = Number.NEGATIVE_INFINITY;
+    let bottom = Number.NEGATIVE_INFINITY;
+
+    for (const el of anchors) {
+      const rect = el.getBoundingClientRect();
+      const measuredWidth = el.dataset.flyout ? Math.max(rect.width, el.scrollWidth) : rect.width;
+      const measuredHeight = el.dataset.flyout ? Math.max(rect.height, el.scrollHeight) : rect.height;
+      left = Math.min(left, rect.left);
+      top = Math.min(top, rect.top);
+      right = Math.max(right, rect.left + measuredWidth);
+      bottom = Math.max(bottom, rect.top + measuredHeight);
+    }
+
+    void window.inkover.setToolbarVisibleBounds({
+      x: Math.max(0, Math.round(left)),
+      y: Math.max(0, Math.round(top)),
+      width: Math.max(0, Math.round(right - left)),
+      height: Math.max(0, Math.round(bottom - top)),
+    });
   }
 
   // ---- Templates ------------------------------------------------------
@@ -217,16 +316,24 @@ async function initToolbar() {
         <div class="tb-divider"></div>
 
         <section class="tb-section">
+          ${renderExportButton()}
+        </section>
+
+        <div class="tb-divider"></div>
+
+        <section class="tb-section">
           ${renderRecordButton()}
         </section>
 
         <div class="tb-divider"></div>
 
         <section class="tb-section tb-section--bottom">
-          ${btn({ id: TOOLS_SEL.id, iconKey: TOOLS_SEL.iconKey, label: TOOLS_SEL.label,
-                  shortcut: TOOLS_SEL.shortcut, className: "tb-btn--tool",
-                  extraAttrs: `data-tool="${TOOLS_SEL.id}"` })}
-          ${btn({ id: "hide", iconKey: "hide", label: "Hide overlay", shortcut: "Esc" })}
+          ${btn({
+            id: "visibility",
+            iconKey: state.overlayVisible ? "eyeOpen" : "eyeClosed",
+            label: state.overlayVisible ? "Hide overlay" : "Show overlay",
+            shortcut: "Esc",
+          })}
           ${btn({ id: "collapse", iconKey: "chevronLeft", label: "Collapse toolbar", shortcut: "" })}
         </section>
       </div>
@@ -252,7 +359,7 @@ async function initToolbar() {
   }
 
   function renderGroupButton(g: ToolGroup): string {
-    const variantId = g.groupId === "shapes" ? state.activeShape : state.activePresent;
+    const variantId = getActiveGroupVariant(g.groupId);
     const variant = g.variants.find((v) => v.id === variantId) ?? g.variants[0];
     const active = state.activeTool === variant.id;
     const open = state.openFlyout === g.groupId;
@@ -347,33 +454,66 @@ async function initToolbar() {
   function renderRecordButton(): string {
     const open = state.openFlyout === "record";
     const recording = state.recorder.state === "recording";
+    const busy = state.recorder.state !== "idle";
     return `
       <div class="tb-group-wrap" data-group="record">
         <button class="tb-btn tb-btn--rec ${recording ? "is-recording" : ""} ${open ? "is-open" : ""}"
           id="record-toggle"
-          data-tooltip="${recording ? "Stop recording" : "Record screen"}"
-          data-tooltip-shortcut="${recording ? "" : "⌘⇧R"}"
+          data-tooltip="${busy ? "Recording controls" : "Record screen"}"
+          data-tooltip-shortcut="${busy ? "" : "⌘⇧R"}"
           data-tooltip-side="right"
-          aria-label="${recording ? "Stop recording" : "Record screen"}">
+          aria-label="${busy ? "Recording controls" : "Record screen"}">
           ${icon(I.record)}
         </button>
-        ${!recording && open ? renderRecordFlyout() : ""}
+        ${open ? renderRecordFlyout() : ""}
+      </div>
+    `;
+  }
+
+  function renderExportButton(): string {
+    const open = state.openFlyout === "export";
+    return `
+      <div class="tb-group-wrap" data-group="export">
+        <button class="tb-btn ${open ? "is-open" : ""}"
+          id="export-toggle"
+          data-tooltip="Export drawing"
+          data-tooltip-shortcut="⌘E / ⌘⇧E"
+          data-tooltip-side="right"
+          aria-label="Export drawing">
+          ${icon(I.export)}
+        </button>
+        ${open ? renderExportFlyout() : ""}
+      </div>
+    `;
+  }
+
+  function renderExportFlyout(): string {
+    return `
+      <div class="tb-flyout tb-flyout--export" data-flyout="export" role="menu">
+        <div class="tb-flyout-arrow"></div>
+        <button class="tb-export-action" data-export-format="png">Export PNG</button>
+        <button class="tb-export-action" data-export-format="svg">Export SVG</button>
       </div>
     `;
   }
 
   function renderRecordFlyout(): string {
+    const starting = state.recorder.state === "starting";
+    const recording = state.recorder.state === "recording" || state.recorder.state === "paused";
+    const encoding = state.recorder.state === "encoding";
+    const idle = state.recorder.state === "idle";
     return `
       <div class="tb-flyout tb-flyout--record" data-flyout="record" role="menu">
         <div class="tb-flyout-arrow"></div>
+        ${idle ? `
         <div class="tb-rec-formats">
           <button class="tb-pill-btn ${state.recordFormat === "webm" ? "is-active" : ""}"
             data-rec-format="webm">WebM</button>
           <button class="tb-pill-btn ${state.recordFormat === "gif" ? "is-active" : ""}"
             data-rec-format="gif">GIF</button>
-        </div>
-        <button class="tb-rec-start" id="rec-start">
-          <span class="tb-rec-dot"></span> Start recording
+        </div>` : ""}
+        <button class="tb-rec-start ${(recording || starting) ? "tb-rec-start--stop" : ""}" id="${recording ? "rec-stop" : "rec-start"}" ${(encoding || starting) ? "disabled" : ""}>
+          <span class="tb-rec-dot"></span> ${encoding ? "Encoding..." : starting ? "Starting..." : recording ? "Stop recording" : "Start recording"}
         </button>
       </div>
     `;
@@ -409,8 +549,20 @@ async function initToolbar() {
       return;
     }
 
-    // Tools (and "use last variant" click on a group button).
-    ROOT.querySelectorAll<HTMLElement>("[data-tool]").forEach((b) => {
+    const toggleGroupFlyout = (id: ToolGroup["groupId"]) => {
+      const willOpen = state.openFlyout !== id;
+      if (willOpen) {
+        state.openFlyout = id;
+        render();
+        syncBoundsAfterFlyoutLayout();
+      } else {
+        state.openFlyout = null;
+        render();
+      }
+    };
+
+    // Standalone tools only. Grouped tool buttons manage flyout open/close below.
+    ROOT.querySelectorAll<HTMLElement>("[data-tool]:not(.tb-btn--group)").forEach((b) => {
       b.addEventListener("click", (e) => {
         const t = e.target as HTMLElement;
         if (t.closest('[data-group-action="open"]')) return;
@@ -419,29 +571,15 @@ async function initToolbar() {
       });
     });
 
-    // Group chevrons
-    ROOT.querySelectorAll<HTMLElement>('[data-group-action="open"]').forEach((c) => {
-      c.addEventListener("click", (e) => {
+    // Group buttons open their submenu when clicked.
+    ROOT.querySelectorAll<HTMLButtonElement>(".tb-btn--group").forEach((button) => {
+      button.addEventListener("click", (e) => {
+        e.preventDefault();
         e.stopPropagation();
-        const wrap = c.closest("[data-group]") as HTMLElement | null;
+        const wrap = button.closest("[data-group]") as HTMLElement | null;
         if (!wrap) return;
-        const id = wrap.dataset.group as "shapes" | "presentation";
-        const willOpen = state.openFlyout !== id;
-        if (willOpen) {
-          state.openFlyout = id;
-          render();
-          // Ask main to resize if needed, but don't block the UI if IPC fails.
-          try {
-            const variants = (id === "shapes" ? SHAPES_GROUP.variants.length : PRESENT_GROUP.variants.length);
-            const desired = computeRequiredWidthForVariants(variants);
-            void window.inkover.resizeToolbar(desired);
-          } catch (err) {
-            // ignore
-          }
-        } else {
-          state.openFlyout = null;
-          render();
-        }
+        const id = wrap.dataset.group as ToolGroup["groupId"];
+        toggleGroupFlyout(id);
       });
     });
 
@@ -449,9 +587,8 @@ async function initToolbar() {
     ROOT.querySelectorAll<HTMLElement>("[data-flyout-tool]").forEach((b) => {
       b.addEventListener("click", () => {
         const tool = b.dataset.flyoutTool as ToolId;
-        const group = b.dataset.flyoutGroup as "shapes" | "presentation";
-        if (group === "shapes") state.activeShape = tool;
-        else state.activePresent = tool;
+        const group = b.dataset.flyoutGroup as ToolGroup["groupId"];
+        setActiveGroupVariant(group, tool);
         state.openFlyout = null;
         applyTool(tool);
         render();
@@ -465,7 +602,7 @@ async function initToolbar() {
       if (willOpen) {
         state.openFlyout = "style";
         render();
-        try { void window.inkover.resizeToolbar(260); } catch {}
+        syncBoundsAfterFlyoutLayout();
       } else {
         state.openFlyout = null;
         render();
@@ -501,22 +638,39 @@ async function initToolbar() {
       if (confirm("Clear all annotations?")) window.inkover.clear();
     });
 
+    document.getElementById("export-toggle")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const willOpen = state.openFlyout !== "export";
+      if (willOpen) {
+        state.openFlyout = "export";
+        render();
+        syncBoundsAfterFlyoutLayout();
+      } else {
+        state.openFlyout = null;
+        render();
+      }
+    });
+    ROOT.querySelectorAll<HTMLButtonElement>("[data-export-format]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const format = (button.dataset.exportFormat as ExportFormat) ?? "png";
+        state.openFlyout = null;
+        render();
+        void window.inkover.exportDrawing(format);
+      });
+    });
+
     // Hide / collapse
-    document.getElementById("hide")?.addEventListener("click", () => window.inkover.toggleVisible());
+    document.getElementById("visibility")?.addEventListener("click", () => window.inkover.toggleVisible());
     document.getElementById("collapse")?.addEventListener("click", () => toggleCollapse());
 
     // Record
     document.getElementById("record-toggle")?.addEventListener("click", (e) => {
       e.stopPropagation();
-      if (state.recorder.state !== "idle") {
-        void window.inkover.recordStop();
-        return;
-      }
       const willOpen = state.openFlyout !== "record";
       if (willOpen) {
         state.openFlyout = "record";
         render();
-        try { void window.inkover.resizeToolbar(220); } catch {}
+        syncBoundsAfterFlyoutLayout();
       } else {
         state.openFlyout = null;
         render();
@@ -524,23 +678,53 @@ async function initToolbar() {
     });
     ROOT.querySelectorAll<HTMLButtonElement>("[data-rec-format]").forEach((b) => {
       b.addEventListener("click", () => {
+        if (state.recorder.state !== "idle") return;
         state.recordFormat = (b.dataset.recFormat as "webm" | "gif") ?? "webm";
         render();
       });
     });
     document.getElementById("rec-start")?.addEventListener("click", () => {
-      state.openFlyout = null;
-      render();
       void onStartRecording();
+    });
+    document.getElementById("rec-stop")?.addEventListener("click", () => {
+      void window.inkover.recordStop();
     });
   }
 
   function applyTool(tool: ToolId) {
     state.activeTool = tool;
+    if (INK_GROUP.variants.some((variant) => variant.id === tool)) state.activeInk = tool;
+    if (SHAPES_GROUP.variants.some((variant) => variant.id === tool)) state.activeShape = tool;
+    if (PRESENT_GROUP.variants.some((variant) => variant.id === tool)) state.activePresent = tool;
     void window.inkover.setTool(tool);
     ROOT.querySelectorAll<HTMLButtonElement>(".tb-btn--tool").forEach((b) => {
       b.classList.toggle("is-active", b.dataset.tool === tool);
     });
+  }
+
+  function getActiveGroupVariant(groupId: ToolGroup["groupId"]): ToolId {
+    switch (groupId) {
+      case "ink":
+        return state.activeInk;
+      case "shapes":
+        return state.activeShape;
+      case "presentation":
+        return state.activePresent;
+    }
+  }
+
+  function setActiveGroupVariant(groupId: ToolGroup["groupId"], tool: ToolId): void {
+    switch (groupId) {
+      case "ink":
+        state.activeInk = tool;
+        return;
+      case "shapes":
+        state.activeShape = tool;
+        return;
+      case "presentation":
+        state.activePresent = tool;
+        return;
+    }
   }
 
   function toggleCollapse() {
@@ -549,25 +733,163 @@ async function initToolbar() {
     render();
   }
 
-  async function onStartRecording() {
-    const sources = await window.inkover.getCaptureSources();
-    if (sources.length === 0) {
-      alert("No screen sources available — check screen recording permissions.");
+  function applyToolShortcut(tool: ToolId): void {
+    state.openFlyout = null;
+    applyTool(tool);
+    render();
+  }
+
+  function isEditingInput(): boolean {
+    const activeElement = document.activeElement;
+    return (
+      activeElement instanceof HTMLElement &&
+      (activeElement.tagName === "TEXTAREA" ||
+        activeElement.tagName === "INPUT" ||
+        activeElement.tagName === "SELECT" ||
+        activeElement.isContentEditable)
+    );
+  }
+
+  function openRecordControls(): void {
+    state.openFlyout = "record";
+    render();
+    syncBoundsAfterFlyoutLayout();
+  }
+
+  function onKeyDown(e: KeyboardEvent): void {
+    if (isEditingInput()) return;
+
+    const key = e.key.toLowerCase();
+    const hasPrimaryModifier = e.metaKey || e.ctrlKey;
+
+    if (hasPrimaryModifier) {
+      if (key === "z" && !e.shiftKey) {
+        void window.inkover.undo();
+        e.preventDefault();
+        return;
+      }
+
+      if (key === "y" || (key === "z" && e.shiftKey)) {
+        void window.inkover.redo();
+        e.preventDefault();
+        return;
+      }
+
+      if (e.shiftKey && key === "p") {
+        void window.inkover.toggleVisible();
+        e.preventDefault();
+        return;
+      }
+
+      if (e.shiftKey && key === "r") {
+        if (state.recorder.state === "idle") {
+          openRecordControls();
+        } else {
+          void window.inkover.recordStop();
+        }
+        e.preventDefault();
+        return;
+      }
+
+      if (key === "e") {
+        void window.inkover.exportDrawing(e.shiftKey ? "svg" : "png");
+        e.preventDefault();
+        return;
+      }
+
       return;
     }
-    const choice = await pickSource(sources);
-    if (!choice) return;
-    await window.inkover.recordStart(choice.id);
+
+    if (e.altKey) return;
+
+    if (key === "escape") {
+      void window.inkover.toggleVisible();
+      e.preventDefault();
+      return;
+    }
+
+    const tool = TOOL_SHORTCUTS[key];
+    if (!tool) return;
+
+    applyToolShortcut(tool);
+    e.preventDefault();
+  }
+
+  async function onStartRecording() {
+    if (state.recorder.state !== "idle") return;
+
+    const attemptId = ++captureAttemptId;
+    state.recorder = {
+      ...state.recorder,
+      state: "starting",
+      error: undefined,
+    };
+    render();
+    syncBoundsAfterFlyoutLayout();
+
+    try {
+      await startCapture({ format: state.recordFormat });
+
+      if (captureAttemptId !== attemptId) {
+        await stopCapture();
+        state.recorder = {
+          ...state.recorder,
+          state: "idle",
+        };
+        render();
+        syncBoundsAfterFlyoutLayout();
+        return;
+      }
+
+      const started = await window.inkover.recordStart({ format: state.recordFormat });
+      if (!started || captureAttemptId !== attemptId) {
+        await stopCapture();
+        if (captureAttemptId === attemptId) {
+          state.recorder = {
+            ...state.recorder,
+            state: "idle",
+          };
+          render();
+          syncBoundsAfterFlyoutLayout();
+        }
+        return;
+      }
+
+      captureAttemptId = 0;
+    } catch (err) {
+      if (captureAttemptId === attemptId) {
+        captureAttemptId = 0;
+        state.recorder = {
+          ...state.recorder,
+          state: "idle",
+        };
+        render();
+        syncBoundsAfterFlyoutLayout();
+      }
+      console.error("[record] start", err);
+      const message = err instanceof Error ? err.message : String(err);
+      alert(message || "Unable to start recording for this display. Check screen recording permissions and try again.");
+    }
   }
 
   // ---- Subscriptions ---------------------------------------------------
 
+  window.inkover.onRecordStopRequest(() => void stopCapture());
+  window.inkover.onRecordPauseRequest(() => pauseCapture());
+  window.inkover.onRecordResumeRequest(() => resumeCapture());
+
   window.inkover.onRecorderStatus((s) => {
+    const previousError = state.recorder.error;
     state.recorder = s;
+    if (s.state === "idle" || s.state === "encoding") captureAttemptId = 0;
     render();
     if (s.error === "open-picker") {
       state.openFlyout = "record";
       render();
+    } else if (s.error && s.error !== previousError) {
+      state.openFlyout = "record";
+      render();
+      alert(s.error);
     }
   });
 
@@ -578,58 +900,18 @@ async function initToolbar() {
   window.inkover.onToolChange((tool) => {
     if (tool === state.activeTool) return;
     state.activeTool = tool;
+    if (INK_GROUP.variants.some((v) => v.id === tool)) state.activeInk = tool;
     if (SHAPES_GROUP.variants.some((v) => v.id === tool)) state.activeShape = tool;
     if (PRESENT_GROUP.variants.some((v) => v.id === tool)) state.activePresent = tool;
     render();
   });
-}
-
-// ---- Source picker modal ------------------------------------------------
-
-async function pickSource(
-  sources: { id: string; name: string; thumbnail: string }[],
-): Promise<{ id: string; name: string } | null> {
-  return new Promise((resolve) => {
-    const wrap = document.createElement("div");
-    wrap.className = "tb-modal";
-    wrap.innerHTML = `
-      <div class="tb-modal-card" role="dialog" aria-modal="true" aria-label="Pick a source">
-        <h2>Pick a source to record</h2>
-        <div class="tb-source-grid">
-          ${sources
-            .map(
-              (s) => `
-            <button class="tb-source" data-id="${s.id}">
-              <img src="${s.thumbnail}" alt="">
-              <div class="tb-source-name">${escape(s.name)}</div>
-            </button>`,
-            )
-            .join("")}
-        </div>
-        <div class="tb-modal-actions">
-          <button id="cancel" class="tb-modal-btn">Cancel</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(wrap);
-    wrap.querySelectorAll<HTMLButtonElement>(".tb-source").forEach((b) => {
-      b.addEventListener("click", () => {
-        wrap.remove();
-        const s = sources.find((x) => x.id === b.dataset.id);
-        resolve(s ? { id: s.id, name: s.name } : null);
-      });
-    });
-    wrap.querySelector("#cancel")!.addEventListener("click", () => {
-      wrap.remove();
-      resolve(null);
-    });
-    wrap.addEventListener("click", (e) => {
-      if (e.target === wrap) {
-        wrap.remove();
-        resolve(null);
-      }
-    });
+  window.inkover.onVisibilityChange(({ visible }) => {
+    if (state.overlayVisible === visible) return;
+    state.overlayVisible = visible;
+    render();
   });
+  window.addEventListener("keydown", onKeyDown);
+  window.addEventListener("resize", queueVisibleBoundsSync);
 }
 
 function escape(s: string): string {

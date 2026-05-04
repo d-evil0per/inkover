@@ -20,23 +20,31 @@ body {
   inset: 0;
   width: 100vw;
   height: 100vh;
+  touch-action: none;
   /* Stack ABOVE blur regions so drawn shapes are not themselves blurred.
      Tool layers (laser/spotlight/magnifier/text editor) sit higher still. */
   z-index: 10;
   /* Critical: cursor changes when tools change, set imperatively in JS. */
 }
 
-/* Blur regions live below the canvas so backdrop-filter only blurs the
-   transparent area showing the desktop, not the strokes the user has drawn. */
+/* Blur regions live below the canvas so drawn annotations stay crisp while the
+   redaction layer renders sampled desktop pixels underneath them. */
 .inkover-blur-region,
 .inkover-blur-preview {
   z-index: 1 !important;
   position: fixed;
   left: 0;
   top: 0;
-  /* Ensure the backdrop-filter applies to the underlying desktop pixels */
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  overflow: hidden;
+  contain: layout paint style;
+}
+
+.inkover-blur-region canvas,
+.inkover-blur-preview canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
 }
 
 /* When hidden by IPC, fade out so toggling feels less abrupt. */

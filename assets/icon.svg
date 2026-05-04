@@ -1,0 +1,31 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="176" y1="128" x2="848" y2="896" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#242A35"/>
+      <stop offset="1" stop-color="#11161E"/>
+    </linearGradient>
+    <linearGradient id="ink" x1="512" y1="248" x2="512" y2="776" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FF7A6B"/>
+      <stop offset="1" stop-color="#FF3B30"/>
+    </linearGradient>
+    <filter id="shadow" x="211" y="172" width="602" height="680" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+      <feOffset dy="28"/>
+      <feGaussianBlur stdDeviation="36"/>
+      <feComposite in2="hardAlpha" operator="out"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.0313726 0 0 0 0 0.0509804 0 0 0 0 0.0862745 0 0 0 0.32 0"/>
+      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_inkover"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_inkover" result="shape"/>
+    </filter>
+  </defs>
+
+  <rect x="128" y="128" width="768" height="768" rx="220" fill="url(#bg)"/>
+  <rect x="140" y="140" width="744" height="744" rx="208" stroke="rgba(255,255,255,0.12)" stroke-width="24"/>
+
+  <g filter="url(#shadow)">
+    <path d="M512 248C400 408 336 516.8 336 600C336 697.202 414.798 776 512 776C609.202 776 688 697.202 688 600C688 516.8 624 408 512 248Z" fill="url(#ink)"/>
+    <path d="M512 312C441.6 421.867 401.067 497.067 390.4 537.6C379.733 578.133 381.867 617.067 396.8 654.4C431.467 607.467 471.733 584 517.6 584C563.467 584 608 604.267 651.2 644.8C650.133 590.4 641.067 540.267 624 494.4C606.933 448.533 569.6 387.733 512 312Z" fill="white" fill-opacity="0.12"/>
+    <path d="M444 566C453.333 503.333 476 448 512 400" stroke="white" stroke-opacity="0.2" stroke-width="40" stroke-linecap="round"/>
+  </g>
+</svg>

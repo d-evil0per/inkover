@@ -51,11 +51,31 @@ export interface DrawingSnapshot {
   bounds: { width: number; height: number };
 }
 
+export type ExportFormat = "png" | "svg";
+
 export interface DisplayInfo {
   id: number;
   bounds: { x: number; y: number; width: number; height: number };
   scaleFactor: number;
   primary: boolean;
+}
+
+export interface CaptureSourceInfo {
+  id: string;
+  name: string;
+  thumbnail: string;
+  displayId: number | null;
+}
+
+export interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface RuntimeInfo {
+  smokeMode: boolean;
 }
 
 /** Persisted user settings. */
@@ -64,7 +84,6 @@ export interface Settings {
   recordHotkey: string;          // e.g. "CommandOrControl+Shift+R"
   defaultStyle: StrokeStyle;
   defaultFont: string;
-  smartShapesEnabled: boolean;   // recognize rough shapes
   laserFadeMs: number;
   recordings: { saveDir: string | null };
   theme: "auto" | "dark" | "light";
@@ -75,17 +94,13 @@ export const DEFAULT_SETTINGS: Settings = {
   recordHotkey: "CommandOrControl+Shift+R",
   defaultStyle: { color: "#FF3B30", width: 4, opacity: 1, fill: null, dash: null },
   defaultFont: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
-  // Off by default — freehand strokes stay as freehand. The recognizer code
-  // remains in place and can be re-enabled from settings if a user wants
-  // rough-rectangle / rough-circle snapping back.
-  smartShapesEnabled: false,
   laserFadeMs: 900,
   recordings: { saveDir: null },
   theme: "auto",
 };
 
 /** Recording state machine. */
-export type RecorderState = "idle" | "recording" | "paused" | "encoding";
+export type RecorderState = "idle" | "starting" | "recording" | "paused" | "encoding";
 
 export interface RecorderStatus {
   state: RecorderState;

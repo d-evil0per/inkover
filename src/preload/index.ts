@@ -5,8 +5,12 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { IPC } from "../shared/ipc-channels";
 import type {
+  CaptureSourceInfo,
   DrawingSnapshot,
+  ExportFormat,
+  Rect,
   RecorderStatus,
+  RuntimeInfo,
   Settings,
   StrokeStyle,
   ToolId,
@@ -14,6 +18,10 @@ import type {
 } from "../shared/types";
 
 type Unsubscribe = () => void;
+
+const runtimeInfo: RuntimeInfo = {
+  smokeMode: process.env.INKOVER_SMOKE_MODE === "1",
+};
 
 const subscribe = <T>(channel: string, cb: (value: T) => void): Unsubscribe => {
   const handler = (_e: unknown, value: T) => cb(value);
@@ -30,6 +38,8 @@ const api = {
 
   // ---- Displays ----
   getDisplays: (): Promise<DisplayInfo[]> => ipcRenderer.invoke(IPC.GetDisplays),
+  getCursorScreenPoint: (): Promise<{ x: number; y: number }> => ipcRenderer.invoke(IPC.GetCursorScreenPoint),
+  getRuntimeInfo: (): RuntimeInfo => runtimeInfo,
 
   // ---- Drawing persistence ----
   saveDrawing: (snap: DrawingSnapshot): Promise<{ path: string }> =>
@@ -38,6 +48,8 @@ const api = {
     ipcRenderer.invoke(IPC.LoadDrawing, path),
   exportImage: (pngDataUrl: string, suggestedName?: string): Promise<{ path: string } | null> =>
     ipcRenderer.invoke(IPC.ExportImage, { pngDataUrl, suggestedName }),
+  exportSvg: (svgMarkup: string, suggestedName?: string): Promise<{ path: string } | null> =>
+    ipcRenderer.invoke(IPC.ExportSvg, { svgMarkup, suggestedName }),
 
   // ---- Toolbar coordination (toolbar window calls these; main re-broadcasts to overlays) ----
   setTool: (tool: ToolId) => ipcRenderer.invoke(IPC.ToolbarSetTool, tool),
@@ -45,24 +57,33 @@ const api = {
   undo: () => ipcRenderer.invoke(IPC.ToolbarUndo),
   redo: () => ipcRenderer.invoke(IPC.ToolbarRedo),
   clear: () => ipcRenderer.invoke(IPC.ToolbarClear),
+  exportDrawing: (format: ExportFormat) => ipcRenderer.invoke(IPC.ToolbarExport, { format }),
   toggleVisible: () => ipcRenderer.invoke(IPC.ToolbarToggleVisible),
-  resizeToolbar: (w: number, h?: number) => ipcRenderer.invoke(IPC.ToolbarResize, { w, h }),
+  setToolbarVisibleBounds: (bounds: Rect | null) => ipcRenderer.invoke(IPC.ToolbarSetVisibleBounds, bounds),
+  setOverlayPointerOverToolbar: (overToolbar: boolean) =>
+    ipcRenderer.invoke(IPC.OverlaySetPointerOverToolbar, overToolbar),
 
   // ---- Overlay subscriptions ----
   onToolChange: (cb: (tool: ToolId) => void) => subscribe<ToolId>(IPC.OnToolChange, cb),
   onStyleChange: (cb: (s: StrokeStyle) => void) => subscribe<StrokeStyle>(IPC.OnStyleChange, cb),
+  onToolbarBoundsChange: (cb: (bounds: Rect | null) => void) =>
+    subscribe<Rect | null>(IPC.OnToolbarBoundsChange, cb),
   onVisibilityChange: (cb: (v: { visible: boolean }) => void) =>
     subscribe<{ visible: boolean }>(IPC.OnVisibilityChange, cb),
   onHistoryAction: (cb: (a: { action: "undo" | "redo" | "clear" }) => void) =>
     subscribe<{ action: "undo" | "redo" | "clear" }>(IPC.OnHistoryAction, cb),
+  onExportRequest: (cb: (request: { format: ExportFormat }) => void) =>
+    subscribe<{ format: ExportFormat }>(IPC.OnExportRequest, cb),
 
   // ---- Screen recording ----
-  getCaptureSources: (): Promise<{ id: string; name: string; thumbnail: string }[]> =>
+  getCaptureSources: (): Promise<CaptureSourceInfo[]> =>
     ipcRenderer.invoke(IPC.GetCaptureSources),
-  recordStart: (sourceId: string) => ipcRenderer.invoke(IPC.RecordStart, sourceId),
+  recordStart: (args?: { sourceId?: string; format?: "webm" | "gif"; displayId?: number | null }) =>
+    ipcRenderer.invoke(IPC.RecordStart, args),
   recordStop: () => ipcRenderer.invoke(IPC.RecordStop),
   recordPause: () => ipcRenderer.invoke(IPC.RecordPause),
   recordResume: () => ipcRenderer.invoke(IPC.RecordResume),
+  recordCaptureFailed: (error: string) => ipcRenderer.invoke(IPC.RecordCaptureFailed, { error }),
   /** Renderer streams the encoded webm/gif bytes back to main for disk write. */
   recordSaveBlob: (kind: "webm" | "gif", bytes: ArrayBuffer, suggestedName?: string) =>
     ipcRenderer.invoke(IPC.RecordSaveBlob, { kind, bytes, suggestedName }),
@@ -70,9 +91,8 @@ const api = {
     subscribe<RecorderStatus>(IPC.OnRecorderStatus, cb),
 
   // ---- Capture-window control signals --------------------------------------
-  // These are pushed *into* the hidden capture renderer by main when the user
-  // clicks stop/pause/resume in the toolbar. The capture renderer subscribes
-  // to drive its MediaRecorder.
+  // Main pushes these into the toolbar renderer when the user pauses,
+  // resumes, or stops an active recording.
   onRecordStopRequest: (cb: () => void) => subscribe<void>(IPC.RecordStop, () => cb()),
   onRecordPauseRequest: (cb: () => void) => subscribe<void>(IPC.RecordPause, () => cb()),
   onRecordResumeRequest: (cb: () => void) => subscribe<void>(IPC.RecordResume, () => cb()),

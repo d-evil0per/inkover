@@ -6,28 +6,37 @@
 //   2. Preview layer     → the currently-drawing stroke or shape, drawn each frame
 //                          from `this.preview`
 //
-// We redraw both each frame for simplicity — modern GPUs handle thousands of
-// vector ops per frame at 60fps without breaking a sweat. If we ever need more
-// throughput, we can tile the persistent layer to an offscreen canvas and only
-// repaint when shapes change.
+// The committed layer is cached into an off-DOM canvas so pointer-move updates
+// only redraw the active preview instead of replaying the entire shape list.
 
-import type { Point, Shape, StrokeStyle } from "@shared/types";
+import type { Point, Rect, Shape, StrokeStyle } from "@shared/types";
 
 export class CanvasEngine {
   private ctx: CanvasRenderingContext2D;
+  private persistentCanvas: HTMLCanvasElement;
+  private persistentCtx: CanvasRenderingContext2D;
   private shapes: Shape[] = [];
   /** Transient shape being authored by the active tool. */
   private preview: Shape | null = null;
+  /** Screen-space rectangle to keep visually clear for the floating toolbar. */
+  private excludedRect: Rect | null = null;
   /** DPR-aware logical size. */
   private width = 0;
   private height = 0;
+  private dpr = 1;
+  private persistentDirty = true;
   /** Throttled render via rAF. */
   private rafId: number | null = null;
 
   constructor(private canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext("2d", { alpha: true });
     if (!ctx) throw new Error("2D canvas unavailable");
+    const persistentCanvas = document.createElement("canvas");
+    const persistentCtx = persistentCanvas.getContext("2d", { alpha: true });
+    if (!persistentCtx) throw new Error("persistent 2D canvas unavailable");
     this.ctx = ctx;
+    this.persistentCanvas = persistentCanvas;
+    this.persistentCtx = persistentCtx;
     this.resize();
     window.addEventListener("resize", () => this.resize());
   }
@@ -36,13 +45,12 @@ export class CanvasEngine {
     const dpr = window.devicePixelRatio || 1;
     const w = window.innerWidth;
     const h = window.innerHeight;
-    this.canvas.style.width = w + "px";
-    this.canvas.style.height = h + "px";
-    this.canvas.width = Math.round(w * dpr);
-    this.canvas.height = Math.round(h * dpr);
-    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.dpr = dpr;
+    configureCanvasSurface(this.canvas, this.ctx, w, h, dpr);
+    configureCanvasSurface(this.persistentCanvas, this.persistentCtx, w, h, dpr);
     this.width = w;
     this.height = h;
+    this.persistentDirty = true;
     this.requestRender();
   }
 
@@ -54,11 +62,13 @@ export class CanvasEngine {
 
   setShapes(shapes: Shape[]): void {
     this.shapes = shapes;
+    this.persistentDirty = true;
     this.requestRender();
   }
 
   addShape(s: Shape): void {
     this.shapes.push(s);
+    this.persistentDirty = true;
     this.requestRender();
   }
 
@@ -66,6 +76,7 @@ export class CanvasEngine {
   replaceLast(s: Shape): void {
     if (this.shapes.length === 0) return;
     this.shapes[this.shapes.length - 1] = s;
+    this.persistentDirty = true;
     this.requestRender();
   }
 
@@ -73,6 +84,7 @@ export class CanvasEngine {
     const i = this.shapes.findIndex((s) => s.id === id);
     if (i >= 0) {
       this.shapes.splice(i, 1);
+      this.persistentDirty = true;
       this.requestRender();
     }
   }
@@ -80,6 +92,7 @@ export class CanvasEngine {
   clear(): void {
     this.shapes = [];
     this.preview = null;
+    this.persistentDirty = true;
     this.requestRender();
   }
 
@@ -88,8 +101,19 @@ export class CanvasEngine {
     this.requestRender();
   }
 
+  setExcludedRect(rect: Rect | null): void {
+    this.excludedRect = rect;
+    this.requestRender();
+  }
+
   size(): { width: number; height: number } {
     return { width: this.width, height: this.height };
+  }
+
+  renderTo(targetCtx: CanvasRenderingContext2D, opts?: { includePreview?: boolean }): void {
+    targetCtx.clearRect(0, 0, this.width, this.height);
+    for (const shape of this.shapes) this.drawShape(targetCtx, shape);
+    if (opts?.includePreview && this.preview) this.drawShape(targetCtx, this.preview);
   }
 
   /** Best-effort hit testing for the eraser tool. */
@@ -114,13 +138,28 @@ export class CanvasEngine {
 
   private render(): void {
     const { ctx, width, height } = this;
+    if (this.persistentDirty) this.repaintPersistentLayer();
     ctx.clearRect(0, 0, width, height);
-    for (const s of this.shapes) this.drawShape(s);
-    if (this.preview) this.drawShape(this.preview);
+    ctx.drawImage(this.persistentCanvas, 0, 0, width, height);
+    if (this.preview) this.drawShape(ctx, this.preview);
+    if (this.excludedRect) {
+      ctx.clearRect(
+        this.excludedRect.x,
+        this.excludedRect.y,
+        this.excludedRect.width,
+        this.excludedRect.height,
+      );
+    }
   }
 
-  private drawShape(s: Shape): void {
-    const ctx = this.ctx;
+  private repaintPersistentLayer(): void {
+    const { persistentCtx, width, height } = this;
+    persistentCtx.clearRect(0, 0, width, height);
+    for (const shape of this.shapes) this.drawShape(persistentCtx, shape);
+    this.persistentDirty = false;
+  }
+
+  private drawShape(ctx: CanvasRenderingContext2D, s: Shape): void {
     ctx.save();
     if (s.kind === "blur") {
       // Blur is rendered as a frosted overlay rectangle; the renderer-side
@@ -207,6 +246,20 @@ export class CanvasEngine {
 }
 
 // ---- Drawing primitives --------------------------------------------------
+
+function configureCanvasSurface(
+  canvas: HTMLCanvasElement,
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  dpr: number,
+): void {
+  canvas.style.width = width + "px";
+  canvas.style.height = height + "px";
+  canvas.width = Math.round(width * dpr);
+  canvas.height = Math.round(height * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
 
 function applyStyle(ctx: CanvasRenderingContext2D, st: StrokeStyle): void {
   ctx.strokeStyle = st.color;
