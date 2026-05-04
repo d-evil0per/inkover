@@ -1,0 +1,26 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="74" y1="58" x2="1100" y2="566" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFF8EE"/>
+      <stop offset="1" stop-color="#EDE2D0"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" rx="36" fill="url(#bg)"/>
+  <rect x="58" y="58" width="1084" height="514" rx="30" fill="#171D25"/>
+  <rect x="94" y="100" width="420" height="430" rx="26" fill="#FFF7EF"/>
+  <rect x="566" y="120" width="542" height="78" rx="24" fill="#FFFFFF" fill-opacity="0.84"/>
+  <text x="566" y="238" fill="#1D241C" font-family="Arial, sans-serif" font-size="64" font-weight="700">InkOver</text>
+  <text x="566" y="298" fill="#5C6458" font-family="Arial, sans-serif" font-size="30">Desktop annotation for demos, reviews,</text>
+  <text x="566" y="338" fill="#5C6458" font-family="Arial, sans-serif" font-size="30">support calls, and guided walkthroughs.</text>
+  <rect x="566" y="398" width="166" height="48" rx="24" fill="#EB5E28"/>
+  <text x="606" y="429" fill="#FFF8F1" font-family="Arial, sans-serif" font-size="22" font-weight="700">Windows</text>
+  <rect x="748" y="398" width="150" height="48" rx="24" fill="#1F8F71"/>
+  <text x="793" y="429" fill="#FFF8F1" font-family="Arial, sans-serif" font-size="22" font-weight="700">macOS</text>
+  <rect x="914" y="398" width="132" height="48" rx="24" fill="#0E7FE6"/>
+  <text x="956" y="429" fill="#FFF8F1" font-family="Arial, sans-serif" font-size="22" font-weight="700">Linux</text>
+  <path d="M162 346L320 292" stroke="#FF7A45" stroke-width="12" stroke-linecap="round"/>
+  <path d="M320 292L290 278" stroke="#FF7A45" stroke-width="12" stroke-linecap="round"/>
+  <path d="M320 292L298 318" stroke="#FF7A45" stroke-width="12" stroke-linecap="round"/>
+  <rect x="178" y="372" width="128" height="84" rx="22" stroke="#1F8F71" stroke-width="10"/>
+  <circle cx="386" cy="226" r="54" fill="#F0B429" fill-opacity="0.26"/>
+</svg>

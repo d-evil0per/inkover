@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>InkOver | Screen Annotation for Live Work</title>
+    <meta name="author" content="InkOver" />
+    <meta
+      name="description"
+      content="InkOver is a desktop annotation tool for demos, reviews, support calls, and live walkthroughs. Draw, redact, export, and record across multiple displays."
+    />
+    <meta
+      name="keywords"
+      content="screen annotation, desktop annotation, redaction, presentation tools, screen recording, electron desktop app"
+    />
+    <meta name="theme-color" content="#eb5e28" />
+    <meta name="robots" content="index,follow" />
+    <link rel="canonical" href="__SITE_URL__/" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta property="og:site_name" content="InkOver" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="InkOver | Screen Annotation for Live Work" />
+    <meta
+      property="og:description"
+      content="Desktop annotation for demos, reviews, support calls, and walkthroughs with overlays, blur, export, and recording."
+    />
+    <meta property="og:url" content="__SITE_URL__/" />
+    <meta property="og:image" content="__OG_IMAGE_URL__" />
+    <meta property="og:image:alt" content="InkOver landing page social preview" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="InkOver | Screen Annotation for Live Work" />
+    <meta
+      name="twitter:description"
+      content="Desktop annotation for demos, reviews, support calls, and walkthroughs with overlays, blur, export, and recording."
+    />
+    <meta name="twitter:image" content="__OG_IMAGE_URL__" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "InkOver",
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Windows, macOS, Linux",
+        "description": "Desktop annotation tool for demos, reviews, support calls, and live walkthroughs.",
+        "url": "__SITE_URL__/",
+        "downloadUrl": "https://github.com/d-evil0per/inkover/releases",
+        "image": "__OG_IMAGE_URL__"
+      }
+    </script>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="site-shell">
+      <header class="topbar">
+        <a class="brand" href="#top" aria-label="InkOver home">
+          <span class="brand-mark" id="brand-mark"></span>
+          <span class="brand-copy">
+            <strong>InkOver</strong>
+            <span>Desktop annotation for serious demos</span>
+          </span>
+        </a>
+        <nav class="topnav" aria-label="Primary navigation">
+          <a href="#preview">Preview</a>
+          <a href="#features">Features</a>
+          <a href="#workflow">Workflow</a>
+          <a href="#downloads">Downloads</a>
+          <a href="https://github.com/d-evil0per/inkover" target="_blank" rel="noreferrer">GitHub</a>
+        </nav>
+      </header>
+
+      <main id="top">
+        <section class="hero">
+          <div class="hero-copy">
+            <p class="eyebrow">Professional screen markup without the bloat</p>
+            <h1>Annotate any app, redact fast, and ship cleaner live sessions.</h1>
+            <p class="hero-text">
+              InkOver gives you a floating toolbar, per-display overlays, precision drawing tools,
+              capture-backed blur, export, and recording in one focused desktop tool.
+            </p>
+            <div class="hero-actions">
+              <a class="button button--primary" href="#downloads">Download Latest Builds</a>
+              <a
+                class="button button--ghost"
+                href="https://github.com/d-evil0per/inkover/releases"
+                target="_blank"
+                rel="noreferrer"
+              >
+                View Release History
+              </a>
+            </div>
+            <ul class="hero-points" aria-label="Key product points">
+              <li>Draw over any desktop app</li>
+              <li>Blur sensitive regions in place</li>
+              <li>Export snapshots and record sessions</li>
+            </ul>
+          </div>
+
+          <div class="hero-stage" aria-hidden="true">
+            <div class="stage-glow stage-glow--left"></div>
+            <div class="stage-glow stage-glow--right"></div>
+            <div class="product-frame">
+              <div class="product-toolbar">
+                <span class="chip chip--live">Live overlay</span>
+                <span class="chip">Multi-monitor</span>
+                <span class="chip">Export PNG/SVG</span>
+              </div>
+              <div class="product-canvas">
+                <div class="window-card window-card--primary">
+                  <div class="window-head">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
+                  <div class="window-body">
+                    <div class="annotation annotation--arrow"></div>
+                    <div class="annotation annotation--spot"></div>
+                    <div class="annotation annotation--box"></div>
+                    <div class="annotation annotation--scribble"></div>
+                  </div>
+                </div>
+                <div class="window-card window-card--floating">
+                  <p>Toolbar</p>
+                  <div class="tool-strip">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
+                  <div class="metrics">
+                    <div>
+                      <strong>12+</strong>
+                      <span>tools</span>
+                    </div>
+                    <div>
+                      <strong>3</strong>
+                      <span>platforms</span>
+                    </div>
+                    <div>
+                      <strong>0</strong>
+                      <span>menu-bar lock-in</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="signal-bar" aria-label="Product highlights">
+          <div><span>Built for</span> demos, support, walkthroughs, reviews</div>
+          <div><span>Output</span> PNG, SVG, WebM, GIF, saved snapshots</div>
+          <div><span>Control</span> keyboard shortcuts, stylus, tray, floating toolbar</div>
+        </section>
+
+        <section class="section section--preview" id="preview">
+          <div class="section-heading section-heading--split">
+            <div>
+              <p class="eyebrow">Preview</p>
+              <h2>A website that still looks complete before the first public release lands.</h2>
+            </div>
+            <p class="section-copy">
+              This section gives you a clean showcase area now, and a ready-made slot for a short walkthrough video later.
+            </p>
+          </div>
+
+          <div class="preview-layout">
+            <figure class="media-card media-card--video">
+              <div class="video-poster">
+                <img src="/demo-poster.svg" alt="InkOver demo poster showing workflow highlights" />
+                <div class="video-overlay">
+                  <span class="play-badge" aria-hidden="true"></span>
+                  <div>
+                    <strong>Short product walkthrough</strong>
+                    <p>Use this slot for a 30 to 45 second demo once your first release is public.</p>
+                  </div>
+                </div>
+              </div>
+              <figcaption>
+                The poster is already wired in. Later you can swap it for a hosted MP4, Loom, or YouTube embed without redesigning the page.
+              </figcaption>
+            </figure>
+
+            <div class="shot-grid">
+              <figure class="media-card media-card--shot">
+                <img src="/preview-toolbar.svg" alt="InkOver toolbar preview" />
+                <figcaption>
+                  <strong>Floating toolbar</strong>
+                  <span>Tool groups, style control, and quick actions without stealing the whole screen.</span>
+                </figcaption>
+              </figure>
+
+              <figure class="media-card media-card--shot">
+                <img src="/preview-overlay.svg" alt="InkOver overlay preview" />
+                <figcaption>
+                  <strong>Live annotation layer</strong>
+                  <span>Callouts, spotlighting, blur, and shape markup for guided walkthroughs.</span>
+                </figcaption>
+              </figure>
+
+              <figure class="media-card media-card--shot">
+                <img src="/preview-export.svg" alt="InkOver export and recording preview" />
+                <figcaption>
+                  <strong>Export and recording</strong>
+                  <span>Snapshots, recordings, and session artifacts that make follow-up work easier.</span>
+                </figcaption>
+              </figure>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="features">
+          <div class="section-heading">
+            <p class="eyebrow">Feature set</p>
+            <h2>Everything the presenter needs, nothing that slows the session down.</h2>
+          </div>
+          <div class="feature-grid">
+            <article class="feature-card feature-card--tall">
+              <h3>Draw with intent</h3>
+              <p>
+                Pen, highlighter, line, arrow, rectangle, ellipse, text, eraser, and constrained shapes
+                are all one shortcut away.
+              </p>
+              <ul>
+                <li>Adaptive smoothing for cleaner strokes</li>
+                <li>Shape tools for quick callouts</li>
+                <li>Stylus-friendly pointer handling</li>
+              </ul>
+            </article>
+            <article class="feature-card">
+              <h3>Present live</h3>
+              <p>Laser pointer, spotlight, and magnifier keep the session focused without breaking flow.</p>
+            </article>
+            <article class="feature-card">
+              <h3>Protect sensitive information</h3>
+              <p>Capture-backed blur lets you redact live content instead of hoping a CSS effect behaves.</p>
+            </article>
+            <article class="feature-card">
+              <h3>Export what matters</h3>
+              <p>Save working sessions, export snapshots, and keep a clean trail after support or review calls.</p>
+            </article>
+            <article class="feature-card feature-card--accent">
+              <h3>Multi-display ready</h3>
+              <p>One overlay per display, synced to the active monitor, with a toolbar that stays usable.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="section section--workflow" id="workflow">
+          <div class="section-heading">
+            <p class="eyebrow">Workflow</p>
+            <h2>Fast enough for live work, structured enough for repeatable teams.</h2>
+          </div>
+          <div class="workflow-grid">
+            <article>
+              <span>01</span>
+              <h3>Open and annotate instantly</h3>
+              <p>Toggle the overlay, grab the right tool, and draw directly over the app you are already using.</p>
+            </article>
+            <article>
+              <span>02</span>
+              <h3>Clarify or redact in real time</h3>
+              <p>Use spotlight, magnifier, or blur while keeping keyboard flow and multi-monitor context intact.</p>
+            </article>
+            <article>
+              <span>03</span>
+              <h3>Export or record the session</h3>
+              <p>Capture outcomes for follow-up notes, bug reports, handoffs, or training material.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="section section--downloads" id="downloads">
+          <div class="section-heading section-heading--split">
+            <div>
+              <p class="eyebrow">Downloads</p>
+              <h2>Latest builds, by platform.</h2>
+            </div>
+            <p class="section-copy">
+              The cards below resolve to GitHub Releases. If the repository has not published installers yet,
+              the page shows a clear pre-release state instead of looking broken.
+            </p>
+          </div>
+
+          <div class="release-status" data-role="release-status">
+            <strong>Checking release status…</strong>
+            <p>Looking for the first public installers now.</p>
+            <a href="https://github.com/d-evil0per/inkover/releases" target="_blank" rel="noreferrer">Open Releases</a>
+          </div>
+
+          <div class="download-grid" id="download-grid">
+            <article class="download-card" data-platform="windows">
+              <div class="download-head">
+                <h3>Windows</h3>
+                <span>NSIS installer</span>
+              </div>
+              <p class="download-copy">Best for standard desktop installs on Windows 10 and 11.</p>
+              <p class="download-meta" data-role="meta">Looking for latest release…</p>
+              <a class="button button--download" data-role="button" href="https://github.com/d-evil0per/inkover/releases" target="_blank" rel="noreferrer">Open Releases</a>
+            </article>
+
+            <article class="download-card" data-platform="macos">
+              <div class="download-head">
+                <h3>macOS</h3>
+                <span>DMG / ZIP</span>
+              </div>
+              <p class="download-copy">Ideal for desktop installs and internal distribution on macOS.</p>
+              <p class="download-meta" data-role="meta">Looking for latest release…</p>
+              <a class="button button--download" data-role="button" href="https://github.com/d-evil0per/inkover/releases" target="_blank" rel="noreferrer">Open Releases</a>
+            </article>
+
+            <article class="download-card" data-platform="linux">
+              <div class="download-head">
+                <h3>Linux</h3>
+                <span>AppImage / DEB</span>
+              </div>
+              <p class="download-copy">Portable AppImage and native package path for Linux desktop environments.</p>
+              <p class="download-meta" data-role="meta">Looking for latest release…</p>
+              <a class="button button--download" data-role="button" href="https://github.com/d-evil0per/inkover/releases" target="_blank" rel="noreferrer">Open Releases</a>
+            </article>
+          </div>
+        </section>
+
+        <section class="section section--faq">
+          <div class="section-heading section-heading--split">
+            <div>
+              <p class="eyebrow">Why teams use it</p>
+              <h2>Made for people who present and explain for a living.</h2>
+            </div>
+            <div class="faq-list">
+              <article>
+                <h3>Does it work across multiple monitors?</h3>
+                <p>Yes. InkOver maintains one transparent overlay per display and keeps them synchronized as monitors change.</p>
+              </article>
+              <article>
+                <h3>Can I keep proof of a session?</h3>
+                <p>Yes. Save snapshots, export PNG or SVG, and record the current display to WebM or GIF.</p>
+              </article>
+              <article>
+                <h3>Can I distribute it professionally?</h3>
+                <p>Yes. The repo includes native build targets and CI release packaging for Windows, macOS, and Linux.</p>
+              </article>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="footer">
+        <p>InkOver is built for demos, reviews, support, and guided walkthroughs.</p>
+        <div>
+          <a href="https://github.com/d-evil0per/inkover/releases" target="_blank" rel="noreferrer">Releases</a>
+          <a href="https://github.com/d-evil0per/inkover" target="_blank" rel="noreferrer">Source</a>
+          <a href="https://github.com/d-evil0per/inkover/issues" target="_blank" rel="noreferrer">Support</a>
+        </div>
+      </footer>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

@@ -25,6 +25,9 @@
   "private": true,
   "scripts": {
     "dev": "concurrently -k \"npm:dev:main\" \"npm:dev:renderer\" \"npm:dev:electron\"",
+    "site:dev": "vite --config website/vite.config.ts",
+    "site:build": "vite build --config website/vite.config.ts",
+    "site:preview": "vite preview --config website/vite.config.ts",
     "dev:main": "tsc -p tsconfig.main.json --watch",
     "dev:renderer": "vite",
     "dev:electron": "node scripts/dev-electron.mjs",

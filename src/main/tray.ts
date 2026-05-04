@@ -2,7 +2,7 @@
 // reason InkOver feels lighter than DrawPen, which lives in the menu bar with a
 // fixed toolbar.
 
-import { Menu, Tray, nativeImage } from "electron";
+import { Menu, Tray, nativeImage, type NativeImage } from "electron";
 import { join } from "path";
 
 export interface TrayHandlers {
@@ -16,23 +16,36 @@ export interface TrayHandlers {
   quit: () => void;
 }
 
+function loadTrayIcon(): NativeImage {
+  const candidateNames = process.platform === "darwin"
+    ? ["trayTemplate.png", "trayTemplate@2x.png", "icon.png"]
+    : [process.platform === "win32" ? "icon.ico" : "icon.png"];
+
+  for (const candidateName of candidateNames) {
+    const icon = nativeImage.createFromPath(join(__dirname, "..", "..", "assets", candidateName));
+    if (icon.isEmpty()) {
+      continue;
+    }
+
+    if (process.platform === "darwin") {
+      if (candidateName.startsWith("trayTemplate")) {
+        icon.setTemplateImage(true);
+      }
+      return icon.resize({ height: 18 });
+    }
+
+    return icon;
+  }
+
+  console.warn("[tray] No tray icon asset found; status item will be invisible.");
+  return nativeImage.createEmpty();
+}
+
 export class TrayController {
   private tray: Tray | null = null;
 
   start(handlers: TrayHandlers): void {
-    // We use a tiny template image so it adapts to dark/light menu bars on macOS.
-    // In a real ship we'd embed an actual icon; for the scaffold we use an empty
-    // 16x16 so the tray still appears.
-    const icon = nativeImage.createEmpty();
-    try {
-      const iconPath = join(__dirname, "..", "..", "assets", "trayTemplate.png");
-      const real = nativeImage.createFromPath(iconPath);
-      if (!real.isEmpty()) {
-        real.setTemplateImage(true);
-      }
-    } catch {
-      // Fall through with empty icon.
-    }
+    const icon = loadTrayIcon();
     this.tray = new Tray(icon);
     this.tray.setToolTip("InkOver — screen annotation");
     this.tray.on("click", () => handlers.toggleAnnotate());

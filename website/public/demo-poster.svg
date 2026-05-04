@@ -1,0 +1,35 @@
+<svg width="1400" height="900" viewBox="0 0 1400 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="68" y1="44" x2="1252" y2="856" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1F2430"/>
+      <stop offset="1" stop-color="#0F1218"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="206" y1="220" x2="1162" y2="690" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FF7A45" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#1F8F71" stop-opacity="0.24"/>
+    </linearGradient>
+  </defs>
+  <rect width="1400" height="900" rx="44" fill="url(#bg)"/>
+  <rect x="68" y="64" width="1264" height="772" rx="34" fill="url(#accent)"/>
+  <rect x="112" y="112" width="832" height="534" rx="30" fill="#FFF7EF" fill-opacity="0.96"/>
+  <rect x="112" y="112" width="832" height="70" rx="30" fill="#FFFDF9"/>
+  <circle cx="158" cy="146" r="10" fill="#1D241C" fill-opacity="0.18"/>
+  <circle cx="188" cy="146" r="10" fill="#1D241C" fill-opacity="0.18"/>
+  <circle cx="218" cy="146" r="10" fill="#1D241C" fill-opacity="0.18"/>
+  <path d="M254 324L536 242" stroke="#FF7A45" stroke-width="12" stroke-linecap="round"/>
+  <path d="M536 242L502 225" stroke="#FF7A45" stroke-width="12" stroke-linecap="round"/>
+  <path d="M536 242L511 274" stroke="#FF7A45" stroke-width="12" stroke-linecap="round"/>
+  <rect x="312" y="398" width="246" height="148" rx="26" stroke="#1F8F71" stroke-width="12"/>
+  <circle cx="708" cy="336" r="92" fill="#F0B429" fill-opacity="0.26"/>
+  <path d="M202 534C296 462 388 470 478 560C510 592 556 616 616 632" stroke="#0E7FE6" stroke-width="12" stroke-linecap="round"/>
+  <rect x="980" y="192" width="266" height="412" rx="28" fill="#FFFAF5" fill-opacity="0.95"/>
+  <rect x="1010" y="242" width="84" height="84" rx="24" fill="#FF7A45" fill-opacity="0.14"/>
+  <rect x="1112" y="242" width="84" height="84" rx="24" fill="#1F8F71" fill-opacity="0.14"/>
+  <rect x="1010" y="344" width="84" height="84" rx="24" fill="#0E7FE6" fill-opacity="0.14"/>
+  <rect x="1112" y="344" width="84" height="84" rx="24" fill="#F0B429" fill-opacity="0.18"/>
+  <rect x="1010" y="462" width="186" height="18" rx="9" fill="#1D241C" fill-opacity="0.1"/>
+  <rect x="1010" y="498" width="156" height="18" rx="9" fill="#1D241C" fill-opacity="0.08"/>
+  <rect x="1010" y="550" width="88" height="28" rx="14" fill="#FF7A45"/>
+  <rect x="164" y="710" width="1090" height="56" rx="28" fill="#FFF9F1" fill-opacity="0.84"/>
+  <text x="200" y="747" fill="#8C3B1F" font-family="Arial, sans-serif" font-size="26" font-weight="700">Annotate. Spotlight. Blur. Export. Record.</text>
+</svg>

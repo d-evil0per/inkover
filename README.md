@@ -129,6 +129,7 @@ npm install
 # - Vite HMR for the renderer
 # - automatic Electron restarts for main/preload/shared changes
 npm run dev
+npm run site:dev
 
 # Production build + run
 npm run build && npm start
@@ -139,6 +140,10 @@ npm run typecheck
 
 # Electron smoke test
 npm run smoke:e2e
+
+# Marketing website
+npm run site:build
+npm run site:preview
 
 # Package distributables for the host platform
 npm run package
@@ -157,6 +162,38 @@ npm run package:linux
 `npm run package:win:release` is the CI-friendly production Windows build. `npm run package:win:installer` is the one-command local production installer path and relaunches in an elevated PowerShell session when Windows needs that privilege.
 
 `npm run package:linux` should run on Linux, and `npm run package:mac` should run on macOS. Those platform-native runs are what you want for customer-facing releases.
+
+## Marketing website
+
+The repo now includes a standalone product website under `website/`.
+
+- `npm run site:dev` starts the marketing page locally on port `4173`.
+- `npm run site:build` outputs the static site to `dist/site`.
+- `npm run site:preview` serves the built site locally for a final check.
+- The download cards fetch the latest GitHub Release and point each OS card at the matching published asset when one exists.
+- If the repo has not published a GitHub Release yet, the downloads section shows an intentional pre-release state instead of empty cards.
+- Set `INKOVER_SITE_URL=https://www.your-domain.com` when building to generate canonical URLs, Open Graph URLs, `robots.txt`, and `sitemap.xml` for your real domain.
+- Set `INKOVER_CUSTOM_DOMAIN=www.your-domain.com` when building to emit a `CNAME` file automatically for GitHub Pages. A template lives at `website/public/CNAME.example`.
+
+Free deployment options for this site:
+
+- **Cloudflare Pages**: simplest production choice for a static marketing page. Build command: `npm run site:build`. Output directory: `dist/site`.
+- **GitHub Pages**: good if you want everything to stay inside GitHub. Publish the contents of `dist/site` from a Pages workflow or a `gh-pages` branch.
+- **Netlify**: easy drag-and-drop or Git-based deploys. Build command: `npm run site:build`. Publish directory: `dist/site`.
+- **Vercel**: also works well for this static output, but it is most useful if you already host other projects there.
+
+If you want the least friction, deploy the website to Cloudflare Pages and keep the desktop binaries in GitHub Releases.
+
+For a custom domain on Cloudflare Pages:
+
+- Add your domain in the Pages project settings.
+- Set the production environment variable `INKOVER_SITE_URL` to your final HTTPS URL.
+- If you use a `www` host, point a DNS `CNAME` record at your Pages hostname and let Cloudflare manage the apex record.
+
+For a custom domain on GitHub Pages:
+
+- Set `INKOVER_SITE_URL` to your final HTTPS URL during the site build.
+- Set `INKOVER_CUSTOM_DOMAIN` to emit the `CNAME` file automatically, or copy `website/public/CNAME.example` to `website/public/CNAME` and replace it with your real domain.
 
 ## Production releases
 
